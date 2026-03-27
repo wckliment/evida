@@ -19,10 +19,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const answer = await ask(question);
+    const { answer, reasoning, sources } = await ask(question);
 
     return Response.json({
       answer,
+      reasoning,
+      sources,
       model: MODEL,
     });
   } catch (err) {

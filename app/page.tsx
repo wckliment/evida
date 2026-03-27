@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import type { EvidaResponse } from "@/lib/llm";
 
 export default function Home() {
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
+  const [result, setResult] = useState<EvidaResponse | null>(null);
   const [model, setModel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -15,7 +16,7 @@ export default function Home() {
 
     setLoading(true);
     setError("");
-    setAnswer("");
+    setResult(null);
     setModel("");
 
     try {
@@ -31,7 +32,7 @@ export default function Home() {
       }
 
       const data = await res.json();
-      setAnswer(data.answer);
+      setResult({ answer: data.answer, reasoning: data.reasoning, sources: data.sources ?? [] });
       setModel(data.model);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -71,11 +72,35 @@ export default function Home() {
           </p>
         )}
 
-        {answer && (
-          <div className="flex flex-col gap-2">
+        {result && (
+          <div className="flex flex-col gap-4">
             <p className="whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200 leading-7">
-              {answer}
+              {result.answer}
             </p>
+
+            {result.reasoning && result.reasoning !== "Unstructured response" && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 italic">
+                {result.reasoning}
+              </p>
+            )}
+
+            {result.sources.length > 0 && (
+              <ul className="flex flex-col gap-1">
+                {result.sources.map((s, i) => (
+                  <li key={i}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      {s.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             <p className="text-xs text-zinc-400">{model}</p>
           </div>
         )}
