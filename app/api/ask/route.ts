@@ -1,4 +1,5 @@
 import { ask } from "@/lib/llm";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   try {
@@ -25,23 +26,44 @@ export async function POST(req: Request) {
       async start(controller) {
         const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+        const { data: execution } = await supabase
+          .from("executions")
+          .insert({ input: question, status: "ingest" })
+          .select("id")
+          .single();
+        const executionId = execution?.id;
+
         controller.enqueue(encoder.encode("[STEP] ingest\n"));
         await delay(25);
+
+        await supabase
+          .from("executions")
+          .update({ status: "analyze" })
+          .eq("id", executionId);
 
         controller.enqueue(encoder.encode("[STEP] analyze\n"));
 
         const { answer } = await ask(question);
 
+        await supabase
+          .from("executions")
+          .update({ status: "generate" })
+          .eq("id", executionId);
+
         controller.enqueue(encoder.encode("[STEP] generate\n"));
 
         const fullText = answer || "";
-        const words = fullText.split(" ");
+        const tokens = fullText.match(/\S+\s*/g) || [];
 
-        for (let i = 0; i < words.length; i++) {
-          const chunk = i === 0 ? words[i] : " " + words[i];
-          controller.enqueue(encoder.encode(chunk));
+        for (const token of tokens) {
+          controller.enqueue(encoder.encode(token));
           await delay(25);
         }
+
+        await supabase
+          .from("executions")
+          .update({ status: "done", output: fullText })
+          .eq("id", executionId);
 
         controller.close();
       }
