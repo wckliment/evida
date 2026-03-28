@@ -43,7 +43,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Claude / AI tooling artifacts
+# AI tooling artifacts
 .claude/
 CLAUDE.md
 AGENTS.md
