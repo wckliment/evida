@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { ExecutionTimeline } from "@/components/ExecutionTimeline";
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "done") return <span className="text-zinc-400">✓</span>;
@@ -69,25 +70,31 @@ export default function HistoryPage() {
                   </div>
                 )}
                 {items.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => router.push(`/run?executionId=${item.id}`)}
-                    className="group flex items-center gap-4 py-3 border-b border-zinc-800 cursor-pointer hover:bg-zinc-900/60 px-2 -mx-2 transition-colors"
-                  >
-                    <div className="text-xs w-3 shrink-0">
-                      <StatusIcon status={item.status} />
-                    </div>
+                  <div key={item.id}>
+                    <div
+                      onClick={() => router.push(`/run?executionId=${item.id}`)}
+                      className="group flex items-center gap-4 py-3 border-b border-zinc-800 cursor-pointer hover:bg-zinc-900/60 px-2 -mx-2 transition-colors"
+                    >
+                      <div className="text-xs w-3 shrink-0">
+                        <StatusIcon status={item.status} />
+                      </div>
 
-                    <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                      <span className="text-sm text-zinc-100 truncate">{item.input}</span>
-                      <span className="text-xs text-zinc-500 opacity-60">
-                        {new Date(item.created_at).toLocaleString()}
+                      <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                        <span className="text-sm text-zinc-100 truncate">{item.input}</span>
+                        <span className="text-xs text-zinc-500 opacity-60">
+                          {new Date(item.created_at).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <span className="text-xs text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        Replay →
                       </span>
                     </div>
-
-                    <span className="text-xs text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      Replay →
-                    </span>
+                    {item.steps && (
+                      <div className="ml-6 mt-2" onClick={(e) => e.stopPropagation()}>
+                        <ExecutionTimeline steps={item.steps} totalDurationMs={item.total_duration_ms} />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

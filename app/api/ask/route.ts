@@ -1,6 +1,7 @@
 import { ask } from "@/lib/llm";
 import { supabase } from "@/lib/supabase";
 import { runExecution } from "@/lib/execution";
+import { ExecutionTracker } from "@/lib/execution-tracker";
 
 export async function POST(req: Request) {
   try {
@@ -28,9 +29,12 @@ export async function POST(req: Request) {
         async start(controller) {
           const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
           let executionId: string | undefined;
+          const tracker = new ExecutionTracker();
 
           try {
+            tracker.step("ingest");
             executionId = await runExecution(question);
+            tracker.end();
             console.log("[API] execution started:", executionId);
             console.log("[API] question:", question);
 
@@ -47,23 +51,28 @@ export async function POST(req: Request) {
 
             controller.enqueue(encoder.encode("[STEP] generate\n"));
 
+            tracker.step("generate");
             const { answer } = await ask(question);
+            tracker.end();
 
             const fullText = answer || "";
             const tokens = fullText.match(/\S+\s*/g) || [];
 
+            tracker.step("stream");
             for (const token of tokens) {
               controller.enqueue(encoder.encode(token));
               await delay(25);
             }
+            tracker.end();
 
             // FIRST: persist to DB
             if (executionId) {
               try {
                 console.log("[API] writing done to DB:", executionId);
+                const trace = tracker.flush();
                 const { data: doneData, error: doneError, count: doneCount } = await supabase
                   .from("executions")
-                  .update({ status: "done", output: fullText })
+                  .update({ status: "done", output: fullText, steps: trace.steps, total_duration_ms: trace.totalDurationMs })
                   .eq("id", executionId)
                   .select();
                 console.log("[API] done update result:", {
@@ -91,9 +100,10 @@ export async function POST(req: Request) {
             if (executionId) {
               try {
                 console.log("[API] writing error to DB:", executionId);
+                const trace = tracker.flush(message);
                 const { data: errorData, error: errorWriteError, count: errorCount } = await supabase
                   .from("executions")
-                  .update({ status: "error", error: message })
+                  .update({ status: "error", error: message, steps: trace.steps, total_duration_ms: trace.totalDurationMs })
                   .eq("id", executionId)
                   .select();
                 console.log("[API] error update result:", {
