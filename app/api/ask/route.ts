@@ -1,5 +1,6 @@
 import { ask } from "@/lib/llm";
 import { supabase } from "@/lib/supabase";
+import { runExecution } from "@/lib/execution";
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const question = body?.question?.trim();
+    console.log("[API] received question =", question);
 
     if (!question) {
       return Response.json(
@@ -22,52 +24,104 @@ export async function POST(req: Request) {
 
     const encoder = new TextEncoder();
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+      const stream = new ReadableStream({
+        async start(controller) {
+          const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+          let executionId: string | undefined;
 
-        const { data: execution } = await supabase
-          .from("executions")
-          .insert({ input: question, status: "ingest" })
-          .select("id")
-          .single();
-        const executionId = execution?.id;
+          try {
+            executionId = await runExecution(question);
+            console.log("[API] execution started:", executionId);
+            console.log("[API] question:", question);
 
-        controller.enqueue(encoder.encode("[STEP] ingest\n"));
-        await delay(25);
+            if (
+              process.env.NODE_ENV === "development" &&
+              question.includes("__ERROR_TEST__")
+            ) {
+              throw new Error("Intentional test error");
+            }
 
-        await supabase
-          .from("executions")
-          .update({ status: "analyze" })
-          .eq("id", executionId);
+            controller.enqueue(encoder.encode("[STEP] ingest\n"));
+            await delay(25);
+            controller.enqueue(encoder.encode("[STEP] analyze\n"));
 
-        controller.enqueue(encoder.encode("[STEP] analyze\n"));
+            controller.enqueue(encoder.encode("[STEP] generate\n"));
 
-        const { answer } = await ask(question);
+            const { answer } = await ask(question);
 
-        await supabase
-          .from("executions")
-          .update({ status: "generate" })
-          .eq("id", executionId);
+            const fullText = answer || "";
+            const tokens = fullText.match(/\S+\s*/g) || [];
 
-        controller.enqueue(encoder.encode("[STEP] generate\n"));
+            for (const token of tokens) {
+              controller.enqueue(encoder.encode(token));
+              await delay(25);
+            }
 
-        const fullText = answer || "";
-        const tokens = fullText.match(/\S+\s*/g) || [];
+            // FIRST: persist to DB
+            if (executionId) {
+              try {
+                console.log("[API] writing done to DB:", executionId);
+                const { data: doneData, error: doneError, count: doneCount } = await supabase
+                  .from("executions")
+                  .update({ status: "done", output: fullText })
+                  .eq("id", executionId)
+                  .select();
+                console.log("[API] done update result:", {
+                  executionId,
+                  doneError,
+                  doneCount,
+                  doneData,
+                });
+                if (doneError) {
+                  console.error("[API] done update error:", doneError);
+                }
+              } catch (dbErr) {
+                console.error("[API] DB write failed:", dbErr);
+              }
+            }
 
-        for (const token of tokens) {
-          controller.enqueue(encoder.encode(token));
-          await delay(25);
+            // THEN: close
+            try { controller.close(); } catch {}
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Internal error";
+            console.log("[API] error occurred:", message);
+            console.log("[API] marking error:", executionId);
+
+            // FIRST: persist to DB
+            if (executionId) {
+              try {
+                console.log("[API] writing error to DB:", executionId);
+                const { data: errorData, error: errorWriteError, count: errorCount } = await supabase
+                  .from("executions")
+                  .update({ status: "error", error: message })
+                  .eq("id", executionId)
+                  .select();
+                console.log("[API] error update result:", {
+                  executionId,
+                  errorWriteError,
+                  errorCount,
+                  errorData,
+                });
+                if (errorWriteError) {
+                  console.error("[API] error update error:", errorWriteError);
+                }
+              } catch (dbErr) {
+                console.error("[API] DB write failed:", dbErr);
+              }
+            }
+
+            // THEN: send stream message
+            try {
+              controller.enqueue(encoder.encode(`[ERROR] ${message}\n`));
+            } catch (e) {
+              console.warn("[API] enqueue failed:", e);
+            }
+
+            // THEN: close
+            try { controller.close(); } catch {}
+          }
         }
-
-        await supabase
-          .from("executions")
-          .update({ status: "done", output: fullText })
-          .eq("id", executionId);
-
-        controller.close();
-      }
-    });
+      });
 
     return new Response(stream, {
       headers: {
