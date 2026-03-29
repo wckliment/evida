@@ -45,14 +45,29 @@ export default function HistoryPage() {
             const items = grouped[label];
             if (items.length === 0) return null;
 
+            const isFirst = GROUP_ORDER.find((g) => grouped[g].length > 0) === label;
+
             return (
               <div key={label}>
-                <div className="flex items-center justify-between text-xs text-zinc-500 mb-3 mt-8 first:mt-0">
-                  <span>{label}</span>
-                  <span className="opacity-70">
-                    {items.filter((i) => i.status === "done").length} success • {items.filter((i) => i.status === "error").length} errors
-                  </span>
-                </div>
+                {isFirst ? (
+                  <div className="text-xs text-zinc-500 mb-3">
+                    <div className="flex justify-between">
+                      <span>{label}</span>
+                      <span className="opacity-70">
+                        {items.filter((i) => i.status === "done").length} success • {items.filter((i) => i.status === "error").length} errors
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-10">
+                    <div className="flex items-center justify-between text-xs text-zinc-600 mb-4">
+                      <span>{label}</span>
+                      <span className="opacity-70">
+                        {items.filter((i) => i.status === "done").length} success • {items.filter((i) => i.status === "error").length} errors
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {items.map((item) => (
                   <div
                     key={item.id}
