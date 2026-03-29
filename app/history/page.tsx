@@ -23,6 +23,7 @@ const GROUP_ORDER = ["Today", "Yesterday", "Earlier"] as const;
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -72,7 +73,9 @@ export default function HistoryPage() {
                 {items.map((item) => (
                   <div key={item.id}>
                     <div
-                      onClick={() => router.push(`/run?executionId=${item.id}`)}
+                      onClick={() =>
+                        setExpandedId((prev) => (prev === item.id ? null : item.id))
+                      }
                       className="group flex items-center gap-4 py-3 border-b border-zinc-800 cursor-pointer hover:bg-zinc-900/60 px-2 -mx-2 transition-colors"
                     >
                       <div className="text-xs w-3 shrink-0">
@@ -86,13 +89,37 @@ export default function HistoryPage() {
                         </span>
                       </div>
 
-                      <span className="text-xs text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        Replay →
-                      </span>
+                      <div className="flex items-center gap-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xs text-zinc-500">
+                          {expandedId === item.id ? "Collapse ↑" : "Expand ↓"}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/run?executionId=${item.id}`);
+                          }}
+                          className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                        >
+                          Open →
+                        </button>
+                      </div>
                     </div>
-                    {item.steps && (
-                      <div className="ml-6 mt-2" onClick={(e) => e.stopPropagation()}>
-                        <ExecutionTimeline steps={item.steps} totalDurationMs={item.total_duration_ms} />
+                    {expandedId === item.id && (
+                      <div
+                        className="ml-6 mt-3 space-y-3 transition-all duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {item.steps && (
+                          <ExecutionTimeline
+                            steps={item.steps}
+                            totalDurationMs={item.total_duration_ms}
+                          />
+                        )}
+                        {item.output && (
+                          <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                            {item.output}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import InputBar from "../../components/InputBar";
 import OutputPanel from "../../components/OutputPanel";
 import ExecutionTrace from "../../components/ExecutionTrace";
+import { ExecutionTimeline } from "@/components/ExecutionTimeline";
 
 type ExecStep = "idle" | "ingest" | "analyze" | "generate" | "done" | "error";
 type ExecMode = "idle" | "live" | "replay";
@@ -29,47 +30,26 @@ function RunPage() {
   });
   const replayCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const searchParams = useSearchParams();
+  const executionId = searchParams.get("executionId");
+  const [execution, setExecution] = useState<any>(null);
+  const [pendingReplay, setPendingReplay] = useState<string | null>(null);
+  const router = useRouter();
 
-  // If navigated here with ?executionId=..., fetch and replay that execution
   useEffect(() => {
-    const executionId = searchParams.get("executionId");
     if (!executionId) return;
 
-    async function fetchExecutionUntilFinalized(id: string) {
-      for (let i = 0; i < 10; i++) {
-        const res = await fetch(`/api/executions/${id}`);
-        const item = await res.json();
+    fetch(`/api/executions/${executionId}`)
+      .then((r) => r.json())
+      .then(setExecution);
+  }, [executionId]);
 
-        console.log("[RUN] poll attempt:", i, item.status);
-
-        if (item.status === "done" || item.status === "error") {
-          return item;
-        }
-
-        await new Promise(r => setTimeout(r, 150));
-      }
-
-      return null;
+  useEffect(() => {
+    if (!executionId && pendingReplay) {
+      handleSubmit(null, pendingReplay);
+      setPendingReplay(null);
     }
-
-    (async () => {
-      const item = await fetchExecutionUntilFinalized(executionId);
-
-      if (!item) {
-        console.warn("[RUN] execution never finalized");
-        return;
-      }
-
-      console.log("[RUN] executionId:", executionId);
-      console.log("[RUN] fetched item:", item);
-      console.log("[RUN] item.status:", item?.status);
-      console.log("[RUN] item.error:", item?.error);
-      console.log("[RUN] item.output:", item?.output);
-
-      replayExecution(item);
-    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [executionId, pendingReplay]);
 
   // Derived helpers used throughout
   // "done" and "error" are terminal display states — execution is no longer running
@@ -231,6 +211,56 @@ function RunPage() {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setExec((prev) => ({ ...prev, step: "error", mode: "idle", error: message }));
     }
+  }
+
+  function handleReplay() {
+    if (!execution?.input) return;
+    setPendingReplay(execution.input);
+    router.push("/run");
+  }
+
+  if (executionId) {
+    if (!execution) {
+      return (
+        <div className="max-w-3xl mx-auto px-6 py-8">
+          <span className="text-sm text-zinc-600">Loading...</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+
+        <button
+          onClick={handleReplay}
+          className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+        >
+          Replay →
+        </button>
+
+        {/* Input */}
+        <div>
+          <div className="text-xs text-zinc-500 mb-1">Input</div>
+          <div className="text-sm text-zinc-100">{execution.input}</div>
+        </div>
+
+        {/* Timeline */}
+        {execution.steps && (
+          <ExecutionTimeline
+            steps={execution.steps}
+            totalDurationMs={execution.total_duration_ms}
+          />
+        )}
+
+        {/* Output */}
+        {execution.output && (
+          <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+            {execution.output}
+          </div>
+        )}
+
+      </div>
+    );
   }
 
   return (
