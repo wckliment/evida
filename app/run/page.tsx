@@ -2,20 +2,12 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import EvidaLogo from "../../components/EvidaLogo";
+import InputBar from "../../components/InputBar";
+import OutputPanel from "../../components/OutputPanel";
+import ExecutionTrace from "../../components/ExecutionTrace";
 
 type ExecStep = "idle" | "ingest" | "analyze" | "generate" | "done" | "error";
 type ExecMode = "idle" | "live" | "replay";
-
-// Step label mapping
-const STEP_LABELS: Record<ExecStep, string> = {
-  idle: "",
-  ingest: "Ingest",
-  analyze: "Analyze",
-  generate: "Generate Response",
-  done: "Done",
-  error: "Error",
-};
 
 // Deterministic replay timing constants
 const REPLAY_INGEST_MS = 500;
@@ -35,8 +27,6 @@ function RunPage() {
     step: "idle",
     mode: "idle",
   });
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  // Token held by the currently-running replay. Setting .cancelled = true stops it.
   const replayCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const searchParams = useSearchParams();
 
@@ -145,14 +135,6 @@ function RunPage() {
     }
   }
 
-  const isIngestActive = step === "ingest";
-  const isAnalyzeActive = step === "analyze";
-  const isGenerateActive = step === "generate";
-
-  const isIngestDone = step !== "idle" && step !== "ingest";
-  const isAnalyzeDone = step === "generate" || step === "done" || step === "error";
-  const isGenerateDone = step === "done";
-
   function handleRetry() {
     console.log("[Retry] exec.input:", exec.input);
     if (!exec.input) return;
@@ -252,168 +234,26 @@ function RunPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
-
-      {/* Top bar */}
-      <header className="w-full px-6 pt-4 pb-2 flex flex-col">
-        <EvidaLogo size={225} />
-        <div className="mt-5 border-b border-zinc-800" />
-      </header>
-
-      {/* Main content */}
-      <main className="flex-1 grid grid-cols-[320px_200px_minmax(600px,1fr)] gap-6 p-6 max-w-[90rem] w-full mx-auto">
-
-        {/* Left: Intent */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-5 flex flex-col gap-4 h-full min-h-[420px] max-h-[600px] min-w-0">
-          <h2 className="text-xs text-zinc-500 uppercase tracking-wide">Intent</h2>
-
-          <div className="flex flex-col flex-1 gap-3">
-            <textarea
-              ref={inputRef}
-              className="w-full flex-1 bg-transparent text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none resize-none whitespace-normal break-words"
-              rows={10}
-              placeholder="Describe what you want Evida to do..."
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              disabled={loading}
-            />
-
-            <div className="mt-auto pt-4 border-t border-zinc-800 flex justify-end">
-              <button
-                onClick={() => handleSubmit()}
-                disabled={loading || !question.trim()}
-                className="rounded-lg bg-cyan-500 px-4 py-2 text-sm text-black hover:bg-cyan-400 disabled:opacity-50"
-              >
-                {loading ? "Running..." : "Run"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Center: Execution */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-5 flex flex-col gap-4 h-full min-h-[420px] max-h-[600px]">
-          <h2 className="text-xs text-zinc-500 uppercase tracking-wide">Execution</h2>
-
-          <div className="flex flex-col gap-3 text-sm mt-2 justify-start">
-            {/* Ingest */}
-            <div className="flex items-center gap-2 py-1">
-              <span
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                  isIngestDone
-                    ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"
-                    : isIngestActive
-                    ? "bg-cyan-400 animate-[pulse_1.2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,211,238,0.8)]"
-                    : "bg-zinc-600 opacity-40"
-                }`}
-              />
-              <span className={`transition-colors duration-200 ${isIngestDone ? "text-zinc-200" : isIngestActive ? "text-zinc-100" : "text-zinc-500"}`}>
-                {STEP_LABELS.ingest}
-              </span>
-            </div>
-
-            {/* Analyze */}
-            <div className="flex items-center gap-2 py-1">
-              <span
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                  isAnalyzeDone
-                    ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"
-                    : isAnalyzeActive
-                    ? "bg-cyan-400 animate-[pulse_1.2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,211,238,0.8)]"
-                    : "bg-zinc-600 opacity-40"
-                }`}
-              />
-              <span className={`transition-colors duration-200 ${isAnalyzeDone ? "text-zinc-200" : isAnalyzeActive ? "text-zinc-100" : "text-zinc-500"}`}>
-                {STEP_LABELS.analyze}
-              </span>
-            </div>
-
-            {/* Generate Response */}
-            <div className="flex items-center gap-2 py-1">
-              <span
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                  isGenerateDone
-                    ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"
-                    : isGenerateActive
-                    ? "bg-cyan-400 animate-[pulse_1.2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,211,238,0.8)]"
-                    : "bg-zinc-600 opacity-40"
-                }`}
-              />
-              <span className={`transition-colors duration-200 ${isGenerateDone ? "text-zinc-200" : isGenerateActive ? "text-zinc-100" : "text-zinc-500"}`}>
-                {STEP_LABELS.generate}
-              </span>
-            </div>
-
-            {/* Done */}
-            <div className="flex items-center gap-2 py-1">
-              <span
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                  step === "done"
-                    ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"
-                    : "bg-zinc-600 opacity-40"
-                }`}
-              />
-              <span className={`transition-colors duration-200 ${step === "done" ? "text-zinc-200" : "text-zinc-500"}`}>
-                {STEP_LABELS.done}
-              </span>
-            </div>
-
-            {/* Error */}
-            <div className="flex items-center gap-2 py-1">
-              <span
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                  step === "error"
-                    ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
-                    : "bg-zinc-600 opacity-40"
-                }`}
-              />
-              <span className={`transition-colors duration-200 ${step === "error" ? "text-red-400" : "text-zinc-500"}`}>
-                {STEP_LABELS.error}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Output */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-5 flex flex-col gap-4 h-full min-h-[420px] min-w-0 max-h-[600px]">
-          <h2 className="text-xs text-zinc-500 uppercase tracking-wide">Output</h2>
-
-          {step === "error" ? (
-            <div className="flex flex-col gap-3 flex-1 min-h-0">
-              <pre className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden scrollbar-hide text-sm text-red-400 leading-7 font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                {exec.error || "An error occurred"}
-              </pre>
-              <div className="flex flex-col gap-1">
-                <div className="text-xs text-zinc-400">Retrying (last run): {exec.input}</div>
-                {question !== exec.input && (
-                  <div className="text-xs text-zinc-500">Current input: {question}</div>
-                )}
-              </div>
-              <button
-                onClick={handleRetry}
-                disabled={exec.mode === "live"}
-                className="self-start rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500 disabled:opacity-50"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <pre className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden scrollbar-hide text-sm text-zinc-200 leading-7 font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-              {streamedAnswer || <span className="text-zinc-500">Waiting for execution...</span>}
-              {step !== "done" && (exec.mode === "live" || (exec.mode === "replay" && step === "generate")) && (
-                <span className="animate-[pulse_1.2s_ease-in-out_infinite]">|</span>
-              )}
-            </pre>
-          )}
-        </div>
-
-
-      </main>
+    <div className="flex-1 flex flex-col px-8 h-full">
+      <div className="max-w-4xl mx-auto w-full flex flex-col flex-1">
+        <InputBar
+          question={question}
+          onQuestionChange={setQuestion}
+          onSubmit={handleSubmit}
+          loading={loading}
+        />
+        <OutputPanel
+          streamedAnswer={streamedAnswer}
+          loading={loading}
+          error={exec.error}
+          execInput={exec.input}
+          execMode={exec.mode}
+          question={question}
+          step={step}
+          onRetry={handleRetry}
+        />
+        <ExecutionTrace step={step} loading={loading} />
+      </div>
     </div>
   );
 }
