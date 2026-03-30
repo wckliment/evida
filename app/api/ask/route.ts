@@ -14,6 +14,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const question = body?.question?.trim();
+    const replayContext = body?.context?.replay === true ? body.context.priorExecution : null;
     console.log("[API] received question =", question);
 
     if (!question) {
@@ -52,6 +53,15 @@ export async function POST(req: Request) {
             controller.enqueue(encoder.encode("[STEP] generate\n"));
 
             tracker.step("generate");
+            const canReuse =
+              replayContext &&
+              replayContext.steps?.length &&
+              question === replayContext.input?.trim();
+            if (canReuse) {
+              console.log("[Replay] Reusing prior execution steps");
+            } else if (replayContext) {
+              console.log("[Replay] Generating new plan");
+            }
             const { answer } = await ask(question);
             tracker.end();
 

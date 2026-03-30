@@ -64,20 +64,40 @@ function RunPage() {
   const [execution, setExecution] = useState<any>(null);
   const [pendingReplay, setPendingReplay] = useState<string | null>(null);
   const router = useRouter();
+  const inputParam = searchParams.get("input");
+  const hasAutoRun = useRef(false);
+  const priorExecutionRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!executionId) return;
+    if (executionId) {
+      fetch(`/api/executions/${executionId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.input && !hasAutoRun.current) {
+            hasAutoRun.current = true;
+            const { input: exInput, steps, result, output: exOutput } = data;
+            priorExecutionRef.current = {
+              input: exInput,
+              steps,
+              result: result ?? exOutput ?? null,
+            };
+            setQuestion(data.input);
+            setTimeout(() => handleSubmit(null, data.input), 0);
+          }
+        })
+        .catch((err) => {
+          console.warn("Replay fetch failed:", err);
+        });
+      return;
+    }
 
-    fetch(`/api/executions/${executionId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setExecution(data);
-        setOriginalOutput(data.result ?? data.output ?? null);
-        if (data?.input) {
-          setQuestion(data.input);
-        }
-      });
-  }, [executionId]);
+    if (inputParam && !hasAutoRun.current) {
+      hasAutoRun.current = true;
+      setQuestion(inputParam);
+      setTimeout(() => handleSubmit(null, inputParam), 0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!executionId && pendingReplay) {
@@ -204,10 +224,17 @@ function RunPage() {
 
     try {
       console.log("[Submit] sending to API =", inputToUse);
+      const payload: Record<string, any> = { question: inputToUse };
+      if (priorExecutionRef.current?.input) {
+        payload.context = {
+          replay: true,
+          priorExecution: priorExecutionRef.current,
+        };
+      }
       const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: inputToUse }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -289,50 +316,6 @@ function RunPage() {
     setReplayOutput(null);
     setPendingReplay(execution.input);
     router.push("/run");
-  }
-
-  if (executionId) {
-    if (!execution) {
-      return (
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          <span className="text-sm text-zinc-600">Loading...</span>
-        </div>
-      );
-    }
-
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-
-        <button
-          onClick={handleReplay}
-          className="text-xs text-zinc-500 hover:text-zinc-300 transition"
-        >
-          Replay →
-        </button>
-
-        {/* Input */}
-        <div>
-          <div className="text-xs text-zinc-500 mb-1">Input</div>
-          <div className="text-sm text-zinc-100">{execution.input}</div>
-        </div>
-
-        {/* Timeline */}
-        {execution.steps && (
-          <ExecutionTimeline
-            steps={execution.steps}
-            totalDurationMs={execution.total_duration_ms}
-          />
-        )}
-
-        {/* Output */}
-        {execution.output && (
-          <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
-            {execution.output}
-          </div>
-        )}
-
-      </div>
-    );
   }
 
   return (

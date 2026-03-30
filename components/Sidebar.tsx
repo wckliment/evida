@@ -20,6 +20,12 @@ export default function Sidebar() {
         >
           History
         </Link>
+        <Link
+          href="/results"
+          className="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+        >
+          Results
+        </Link>
       </nav>
     </aside>
   );

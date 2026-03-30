@@ -21,9 +21,14 @@ function getGroup(dateStr: string): "Today" | "Yesterday" | "Earlier" {
 
 const GROUP_ORDER = ["Today", "Yesterday", "Earlier"] as const;
 
+function getItemId(item: any) {
+  return item.id ?? item.execution_id ?? item._id;
+}
+
 export default function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [ratings, setRatings] = useState<Record<string, "up" | "down">>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -88,7 +93,11 @@ export default function HistoryPage() {
                 {(() => {
                   const itemMap = new Map<string, any>();
                   const rootItems: any[] = [];
-                  items.forEach((exec) => itemMap.set(exec.id, { ...exec, children: [] }));
+                  items.forEach((exec) => {
+                    const execId = getItemId(exec);
+                    if (!execId) return;
+                    itemMap.set(execId, { ...exec, children: [] });
+                  });
                   itemMap.forEach((exec) => {
                     if (exec.parentExecutionId && itemMap.has(exec.parentExecutionId)) {
                       itemMap.get(exec.parentExecutionId).children.push(exec);
@@ -107,12 +116,19 @@ export default function HistoryPage() {
                     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
                   );
 
-                  const renderItem = (item: any, isReplay = false) => (
-                    <div key={item.id}>
+                  const renderItem = (item: any, isReplay = false, isBest = false) => {
+                    const itemId = getItemId(item);
+
+                    console.log("ITEM", item);
+                    console.log("ITEM ID", itemId);
+                    console.log("RATING STATE", itemId ? ratings[itemId] : undefined);
+
+                    return (
+                    <div key={itemId}>
                       <div className="group flex items-center py-3 border-b border-zinc-800 hover:bg-zinc-900/60 px-2 -mx-2 transition-colors">
                         <div
                           onClick={() =>
-                            setExpandedId((prev) => (prev === item.id ? null : item.id))
+                            setExpandedId((prev) => (prev === itemId ? null : itemId))
                           }
                           className="flex items-center gap-4 flex-1 cursor-pointer min-w-0"
                         >
@@ -134,35 +150,54 @@ export default function HistoryPage() {
                         <div className="flex items-center gap-3 ml-auto shrink-0">
                           <span
                             onClick={() =>
-                              setExpandedId((prev) => (prev === item.id ? null : item.id))
+                              setExpandedId((prev) => (prev === itemId ? null : itemId))
                             }
                             className="text-xs text-zinc-500 cursor-pointer"
                           >
-                            {expandedId === item.id ? "Collapse ↑" : "Expand ↓"}
+                            {expandedId === itemId ? "Collapse ↑" : "Expand ↓"}
                           </span>
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => handleRate(item.id, "up")}
-                              className="text-xs px-2 py-1 rounded text-zinc-500 hover:bg-zinc-800 hover:text-green-400 transition"
+                              onClick={() => {
+                                if (!itemId) return;
+                                setRatings((prev) => ({ ...prev, [itemId]: "up" }));
+                                handleRate(itemId, "up");
+                              }}
+                              className={`text-xs px-2 py-1 rounded ${
+                                itemId && ratings[itemId] === "up"
+                                  ? "text-green-400 bg-zinc-800"
+                                  : "text-zinc-500 hover:text-green-400"
+                              }`}
                             >
-                              👍
+                              👍{itemId && ratings[itemId] === "up" && "✓"}
                             </button>
                             <button
-                              onClick={() => handleRate(item.id, "down")}
-                              className="text-xs px-2 py-1 rounded text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition"
+                              onClick={() => {
+                                if (!itemId) return;
+                                setRatings((prev) => ({ ...prev, [itemId]: "down" }));
+                                handleRate(itemId, "down");
+                              }}
+                              className={`text-xs px-2 py-1 rounded ${
+                                itemId && ratings[itemId] === "down"
+                                  ? "text-red-400 bg-zinc-800"
+                                  : "text-zinc-500 hover:text-red-400"
+                              }`}
                             >
                               👎
                             </button>
                           </div>
+                          {isBest && (
+                            <span className="text-xs text-yellow-400 ml-2">⭐ Best</span>
+                          )}
                           <button
-                            onClick={() => router.push(`/run?executionId=${item.id}`)}
+                            onClick={() => itemId && router.push(`/run?executionId=${itemId}`)}
                             className="text-xs text-zinc-500 hover:text-zinc-300 transition"
                           >
                             Open →
                           </button>
                         </div>
                       </div>
-                      {expandedId === item.id && (
+                      {expandedId === itemId && (
                         <div
                           className="ml-6 mt-3 space-y-3 transition-all duration-200"
                           onClick={(e) => e.stopPropagation()}
@@ -182,22 +217,27 @@ export default function HistoryPage() {
                       )}
                     </div>
                   );
+                  };
 
                   return rootItems.map((exec) => (
-                    <div key={exec.id}>
-                      {renderItem(exec)}
+                    <div key={getItemId(exec)}>
+                      {renderItem(exec, false, !!(getItemId(exec) && ratings[getItemId(exec)] === "up"))}
                       {exec.children.length > 0 && (
                         <div className="ml-6 border-l border-zinc-700 pl-4">
-                          {exec.children.map((child: any) => (
-                            <div
-                              key={child.id}
-                              className="flex gap-2 items-start"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <span className="text-zinc-600 text-xs mt-3.5">↳</span>
-                              <div className="flex-1">{renderItem(child, true)}</div>
-                            </div>
-                          ))}
+                          {exec.children.map((child: any) => {
+                            const childId = getItemId(child);
+                            const isBest = !!(childId && ratings[childId] === "up");
+                            return (
+                              <div
+                                key={childId}
+                                className="flex gap-2 items-start"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-zinc-600 text-xs mt-3.5">↳</span>
+                                <div className="flex-1">{renderItem(child, true, isBest)}</div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
