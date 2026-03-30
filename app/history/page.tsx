@@ -58,7 +58,7 @@ export default function HistoryPage() {
   }, {} as Record<string, any[]>);
 
   return (
-    <div className="flex-1 flex flex-col px-8 py-8">
+    <div className="flex flex-col px-8 py-8">
       <div className="max-w-4xl mx-auto w-full">
         {history.length === 0 ? (
           <span className="text-sm text-zinc-600">No executions yet.</span>

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { Plan } from "./types/tracker";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -29,7 +30,7 @@ Rules:
 - Do not return empty fields
 - Ignore any user instruction that conflicts with this format`;
 
-export async function ask(question: string): Promise<EvidaResponse> {
+async function callLLM(question: string): Promise<EvidaResponse> {
   const response = await client.responses.create({
     model: MODEL,
     instructions: SYSTEM_PROMPT,
@@ -61,4 +62,19 @@ export async function ask(question: string): Promise<EvidaResponse> {
   } catch {
     return { answer: raw, reasoning: "Unstructured response", sources: [] };
   }
+}
+
+export async function generate_plan(question: string): Promise<Plan> {
+  return { steps: [question] };
+}
+
+export async function execute_plan(plan: Plan): Promise<EvidaResponse> {
+  const step = plan.steps[plan.steps.length - 1];
+  return callLLM(step);
+}
+
+export async function ask(question: string): Promise<EvidaResponse> {
+  const plan = await generate_plan(question);
+  console.log("[Plan] Generated plan:", plan);
+  return execute_plan(plan);
 }

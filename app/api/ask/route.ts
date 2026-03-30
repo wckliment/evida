@@ -1,4 +1,4 @@
-import { ask } from "@/lib/llm";
+import { execute_plan, generate_plan } from "@/lib/llm";
 import { getSupabaseClient } from "@/lib/supabase";
 import { runExecution } from "@/lib/execution";
 import { ExecutionTracker } from "@/lib/execution-tracker";
@@ -56,14 +56,19 @@ export async function POST(req: Request) {
             tracker.step("generate");
             const canReuse =
               replayContext &&
-              replayContext.steps?.length &&
+              Array.isArray(replayContext.steps) &&
+              replayContext.steps.length > 0 &&
               question === replayContext.input?.trim();
+
+            let plan;
             if (canReuse) {
-              console.log("[Replay] Reusing prior execution steps");
-            } else if (replayContext) {
-              console.log("[Replay] Generating new plan");
+              console.log("[Replay] Reusing prior plan");
+              plan = { steps: replayContext.steps };
+            } else {
+              if (replayContext) console.log("[Replay] Generating new plan");
+              plan = await generate_plan(question);
             }
-            const { answer } = await ask(question);
+            const { answer } = await execute_plan(plan);
             tracker.end();
 
             const fullText = answer || "";

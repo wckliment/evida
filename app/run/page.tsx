@@ -319,7 +319,7 @@ function RunPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col px-8 h-full">
+    <div className="flex-1 flex flex-col px-8">
       <div className="max-w-4xl mx-auto w-full flex flex-col flex-1">
         <InputBar
           question={question}

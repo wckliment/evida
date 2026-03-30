@@ -1,5 +1,9 @@
 export type StepName = "ingest" | "generate" | "stream";
 
+export type Plan = {
+  steps: string[];
+};
+
 export type StepRecord = {
   step: StepName;
   status: "running" | "done" | "error";
