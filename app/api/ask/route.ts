@@ -1,5 +1,5 @@
 import { ask } from "@/lib/llm";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 import { runExecution } from "@/lib/execution";
 import { ExecutionTracker } from "@/lib/execution-tracker";
 
@@ -29,6 +29,7 @@ export async function POST(req: Request) {
       const stream = new ReadableStream({
         async start(controller) {
           const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+          const supabase = getSupabaseClient();
           let executionId: string | undefined;
           const tracker = new ExecutionTracker();
 

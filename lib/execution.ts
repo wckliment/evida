@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { getSupabaseClient } from "./supabase";
 
 /**
  * Lifecycle manager for a single execution.
@@ -8,6 +8,7 @@ import { supabase } from "./supabase";
  * PASS 1: DB lifecycle only — streaming stays in the route.
  */
 export async function runExecution(input: string): Promise<string> {
+  const supabase = getSupabaseClient();
   let executionId: string | null = null;
 
   try {

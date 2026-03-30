@@ -1,10 +1,11 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabaseClient();
     const { rating } = await req.json();
 
     if (!["up", "down"].includes(rating)) {

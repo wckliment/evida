@@ -1,9 +1,10 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export async function GET(
   _req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabaseClient();
   const { id } = await context.params;
   const { data, error } = await supabase
     .from("executions")
