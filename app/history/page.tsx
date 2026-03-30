@@ -32,6 +32,21 @@ export default function HistoryPage() {
       .then((json) => setHistory(json.data || []));
   }, []);
 
+  async function handleRate(id: string, value: "up" | "down") {
+    try {
+      const res = await fetch(`/api/executions/${id}/rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: value }),
+      });
+      if (!res.ok) {
+        console.warn("Rating failed");
+      }
+    } catch (err) {
+      console.warn("[Rating Error]", err);
+    }
+  }
+
   const grouped = GROUP_ORDER.reduce((acc, label) => {
     acc[label] = history.filter((item) => getGroup(item.created_at) === label);
     return acc;
@@ -70,60 +85,124 @@ export default function HistoryPage() {
                     </div>
                   </div>
                 )}
-                {items.map((item) => (
-                  <div key={item.id}>
-                    <div
-                      onClick={() =>
-                        setExpandedId((prev) => (prev === item.id ? null : item.id))
-                      }
-                      className="group flex items-center gap-4 py-3 border-b border-zinc-800 cursor-pointer hover:bg-zinc-900/60 px-2 -mx-2 transition-colors"
-                    >
-                      <div className="text-xs w-3 shrink-0">
-                        <StatusIcon status={item.status} />
-                      </div>
+                {(() => {
+                  const itemMap = new Map<string, any>();
+                  const rootItems: any[] = [];
+                  items.forEach((exec) => itemMap.set(exec.id, { ...exec, children: [] }));
+                  itemMap.forEach((exec) => {
+                    if (exec.parentExecutionId && itemMap.has(exec.parentExecutionId)) {
+                      itemMap.get(exec.parentExecutionId).children.push(exec);
+                    } else {
+                      rootItems.push(exec);
+                    }
+                  });
 
-                      <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                        <span className="text-sm text-zinc-100 truncate">{item.input}</span>
-                        <span className="text-xs text-zinc-500 opacity-60">
-                          {new Date(item.created_at).toLocaleString()}
-                        </span>
-                      </div>
+                  itemMap.forEach((exec) => {
+                    exec.children.sort((a: any, b: any) =>
+                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                    );
+                  });
 
-                      <div className="flex items-center gap-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-xs text-zinc-500">
-                          {expandedId === item.id ? "Collapse ↑" : "Expand ↓"}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/run?executionId=${item.id}`);
-                          }}
-                          className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                  rootItems.sort((a, b) =>
+                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                  );
+
+                  const renderItem = (item: any, isReplay = false) => (
+                    <div key={item.id}>
+                      <div className="group flex items-center py-3 border-b border-zinc-800 hover:bg-zinc-900/60 px-2 -mx-2 transition-colors">
+                        <div
+                          onClick={() =>
+                            setExpandedId((prev) => (prev === item.id ? null : item.id))
+                          }
+                          className="flex items-center gap-4 flex-1 cursor-pointer min-w-0"
                         >
-                          Open →
-                        </button>
-                      </div>
-                    </div>
-                    {expandedId === item.id && (
-                      <div
-                        className="ml-6 mt-3 space-y-3 transition-all duration-200"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {item.steps && (
-                          <ExecutionTimeline
-                            steps={item.steps}
-                            totalDurationMs={item.total_duration_ms}
-                          />
-                        )}
-                        {item.output && (
-                          <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
-                            {item.output}
+                          <div className="text-xs w-3 shrink-0">
+                            <StatusIcon status={item.status} />
                           </div>
-                        )}
+
+                          <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                            <span className={`text-sm truncate ${isReplay ? "text-zinc-400" : "text-zinc-100"}`}>
+                              {item.input}
+                            </span>
+                            <span className="text-xs text-zinc-500 opacity-60">
+                              {isReplay && <span className="text-cyan-700 mr-1">replay</span>}
+                              {new Date(item.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 ml-auto shrink-0">
+                          <span
+                            onClick={() =>
+                              setExpandedId((prev) => (prev === item.id ? null : item.id))
+                            }
+                            className="text-xs text-zinc-500 cursor-pointer"
+                          >
+                            {expandedId === item.id ? "Collapse ↑" : "Expand ↓"}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleRate(item.id, "up")}
+                              className="text-xs px-2 py-1 rounded text-zinc-500 hover:bg-zinc-800 hover:text-green-400 transition"
+                            >
+                              👍
+                            </button>
+                            <button
+                              onClick={() => handleRate(item.id, "down")}
+                              className="text-xs px-2 py-1 rounded text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition"
+                            >
+                              👎
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => router.push(`/run?executionId=${item.id}`)}
+                            className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                          >
+                            Open →
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {expandedId === item.id && (
+                        <div
+                          className="ml-6 mt-3 space-y-3 transition-all duration-200"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {item.steps && (
+                            <ExecutionTimeline
+                              steps={item.steps}
+                              totalDurationMs={item.total_duration_ms}
+                            />
+                          )}
+                          {item.output && (
+                            <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                              {item.output}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+
+                  return rootItems.map((exec) => (
+                    <div key={exec.id}>
+                      {renderItem(exec)}
+                      {exec.children.length > 0 && (
+                        <div className="ml-6 border-l border-zinc-700 pl-4">
+                          {exec.children.map((child: any) => (
+                            <div
+                              key={child.id}
+                              className="flex gap-2 items-start"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="text-zinc-600 text-xs mt-3.5">↳</span>
+                              <div className="flex-1">{renderItem(child, true)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
             );
           })

@@ -21,6 +21,32 @@ function delay(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+function diffWords(original: string, replay: string) {
+  const oWords = original.split(" ");
+  const rWords = replay.split(" ");
+  const max = Math.max(oWords.length, rWords.length);
+  const result = [];
+  for (let i = 0; i < max; i++) {
+    const o = oWords[i] ?? "";
+    const r = rWords[i] ?? "";
+    result.push({ word: r, changed: o !== r });
+  }
+  return result;
+}
+
+function diffLines(original: string, replay: string) {
+  const originalLines = original.split("\n");
+  const replayLines = replay.split("\n");
+  const max = Math.max(originalLines.length, replayLines.length);
+  const result = [];
+  for (let i = 0; i < max; i++) {
+    const o = originalLines[i] ?? "";
+    const r = replayLines[i] ?? "";
+    result.push({ original: o, replay: r, changed: o !== r });
+  }
+  return result;
+}
+
 function RunPage() {
   const [question, setQuestion] = useState("");
   const [streamedAnswer, setStreamedAnswer] = useState("");
@@ -28,6 +54,10 @@ function RunPage() {
     step: "idle",
     mode: "idle",
   });
+  const [originalOutput, setOriginalOutput] = useState<string | null>(null);
+  const [replayOutput, setReplayOutput] = useState<string | null>(null);
+  const [isReplayMode, setIsReplayMode] = useState(false);
+  const isReplayRef = useRef(false);
   const replayCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const searchParams = useSearchParams();
   const executionId = searchParams.get("executionId");
@@ -40,7 +70,13 @@ function RunPage() {
 
     fetch(`/api/executions/${executionId}`)
       .then((r) => r.json())
-      .then(setExecution);
+      .then((data) => {
+        setExecution(data);
+        setOriginalOutput(data.result ?? data.output ?? null);
+        if (data?.input) {
+          setQuestion(data.input);
+        }
+      });
   }, [executionId]);
 
   useEffect(() => {
@@ -55,6 +91,8 @@ function RunPage() {
   // "done" and "error" are terminal display states — execution is no longer running
   console.log("[UI] exec.mode =", exec.mode);
   const loading = exec.mode !== "idle" && exec.step !== "done" && exec.step !== "error";
+  const [showOnlyChanges, setShowOnlyChanges] = useState(false);
+  const diff = originalOutput && replayOutput ? diffLines(originalOutput, replayOutput) : null;
   const step = exec.step;
 
   async function replayExecution(item: any) {
@@ -69,6 +107,7 @@ function RunPage() {
     replayCancelRef.current = token;
 
     console.log("[Replay] setting input:", item.input);
+    setReplayOutput(null);
     setQuestion(item.input);
     setStreamedAnswer("");
     setExec({ step: "ingest", mode: "replay", input: item.input, error: null });
@@ -103,6 +142,10 @@ function RunPage() {
       }
 
       setExec((prev) => ({ ...prev, step: "done", mode: "idle" }));
+      if (isReplayRef.current) {
+        setReplayOutput(output);
+        isReplayRef.current = false;
+      }
     } catch {
       if (!token.cancelled) {
         setExec((prev) => ({ ...prev, step: "error", mode: "idle", error: "Replay failed" }));
@@ -152,6 +195,10 @@ function RunPage() {
       replayCancelRef.current = null;
     }
 
+    if (!isReplayRef.current) {
+      setIsReplayMode(false);
+      setReplayOutput(null);
+    }
     setStreamedAnswer("");
     setExec({ mode: "live", step: "ingest", input: inputToUse, output: "", error: null });
 
@@ -207,6 +254,28 @@ function RunPage() {
       }
 
       setExec((prev) => prev.step === "error" ? prev : { ...prev, step: "done", mode: "idle" });
+      if (isReplayRef.current) {
+        setReplayOutput(fullText);
+        isReplayRef.current = false;
+        try {
+          const res = await fetch("/api/executions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              input: inputToUse,
+              output: fullText,
+              parentExecutionId: executionId || null,
+            }),
+          });
+          if (!res.ok) {
+            console.warn("Replay persistence failed");
+          }
+        } catch (err) {
+          console.warn("[Replay Persist Failed]", err);
+        }
+      } else {
+        setOriginalOutput(fullText);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setExec((prev) => ({ ...prev, step: "error", mode: "idle", error: message }));
@@ -215,6 +284,9 @@ function RunPage() {
 
   function handleReplay() {
     if (!execution?.input) return;
+    isReplayRef.current = true;
+    setIsReplayMode(true);
+    setReplayOutput(null);
     setPendingReplay(execution.input);
     router.push("/run");
   }
@@ -272,16 +344,104 @@ function RunPage() {
           onSubmit={handleSubmit}
           loading={loading}
         />
-        <OutputPanel
-          streamedAnswer={streamedAnswer}
-          loading={loading}
-          error={exec.error}
-          execInput={exec.input}
-          execMode={exec.mode}
-          question={question}
-          step={step}
-          onRetry={handleRetry}
-        />
+        {originalOutput && !loading && (
+          <div className="flex justify-end mt-1">
+            <button
+              className="text-xs text-zinc-400 hover:text-zinc-200 transition"
+              onClick={() => {
+                isReplayRef.current = true;
+                setIsReplayMode(true);
+                setReplayOutput(null);
+                handleSubmit(null, question);
+              }}
+            >
+              Replay Modified
+            </button>
+          </div>
+        )}
+        {originalOutput && (isReplayMode || replayOutput) ? (
+          <div className="space-y-6 mt-4">
+            <div>
+              <div className="text-xs text-zinc-500 mb-2">Original Output</div>
+              <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{originalOutput}</div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-zinc-500">
+                  {loading ? "Replay Output (Streaming)" : "Replay Output"}
+                </div>
+                {replayOutput && (
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-zinc-400">
+                      <input
+                        type="checkbox"
+                        checked={showOnlyChanges}
+                        onChange={(e) => setShowOnlyChanges(e.target.checked)}
+                      />
+                      Show only changes
+                    </label>
+                    <button
+                      className="text-xs text-zinc-400 hover:text-zinc-200"
+                      onClick={() => { setReplayOutput(null); setIsReplayMode(false); }}
+                    >
+                      Clear Replay
+                    </button>
+                  </div>
+                )}
+              </div>
+              {!replayOutput ? (
+                <OutputPanel
+                  streamedAnswer={streamedAnswer}
+                  loading={loading}
+                  error={exec.error}
+                  execInput={exec.input}
+                  execMode={exec.mode}
+                  question={question}
+                  step={step}
+                  onRetry={handleRetry}
+                />
+              ) : (
+                diff && (
+                  <div className="text-sm text-zinc-300 leading-relaxed font-mono">
+                    {(showOnlyChanges ? diff.filter(l => l.changed) : diff).map((line, i) => (
+                      <div
+                        key={i}
+                        className={line.changed ? "bg-yellow-500/10 border-l-2 border-yellow-500 pl-2" : "pl-2"}
+                      >
+                        {line.changed && <span className="text-yellow-500 mr-2">•</span>}
+                        {line.changed ? (() => {
+                          const words = diffWords(line.original, line.replay);
+                          return (
+                            <span>
+                              {words.map((w, idx) => (
+                                <span key={idx} className={w.changed ? "bg-yellow-500/30 px-0.5" : ""}>
+                                  {idx < words.length - 1 ? w.word + " " : w.word}
+                                </span>
+                              ))}
+                            </span>
+                          );
+                        })() : (
+                          line.replay || "\u00a0"
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        ) : (
+          <OutputPanel
+            streamedAnswer={streamedAnswer}
+            loading={loading}
+            error={exec.error}
+            execInput={exec.input}
+            execMode={exec.mode}
+            question={question}
+            step={step}
+            onRetry={handleRetry}
+          />
+        )}
         <ExecutionTrace step={step} loading={loading} />
       </div>
     </div>
