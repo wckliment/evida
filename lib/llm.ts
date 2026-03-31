@@ -65,12 +65,69 @@ async function callLLM(question: string): Promise<EvidaResponse> {
 }
 
 export async function generate_plan(question: string): Promise<Plan> {
-  return { steps: [question] };
+  return {
+    input: question,
+    steps: [
+      "analyze question",
+      "generate answer",
+    ],
+  };
 }
 
 export async function execute_plan(plan: Plan): Promise<EvidaResponse> {
-  const step = plan.steps[plan.steps.length - 1];
-  return callLLM(step);
+  if (!plan.steps || plan.steps.length === 0) {
+    throw new Error("Invalid plan: no steps");
+  }
+
+  if (!plan.input) {
+    throw new Error("Invalid plan: missing input");
+  }
+
+  const context: Record<string, any> = {};
+
+  let result: EvidaResponse = { answer: "", reasoning: "", sources: [] };
+
+  for (const step of plan.steps) {
+    console.log("[Plan] Step:", step);
+
+    switch (step) {
+      case "analyze question":
+        console.log("[Analyze] Input:", plan.input);
+        context.analysis = {
+          length: plan.input.length,
+          preview: plan.input.slice(0, 50),
+        };
+        break;
+
+      case "generate answer": {
+        const enrichedInput = `
+You are answering a user question.
+
+Question:
+${plan.input}
+
+Relevant context (structured data):
+\`\`\`json
+${JSON.stringify(context, null, 2)}
+\`\`\`
+
+Use the context if helpful, otherwise answer normally.
+`;
+        result = await callLLM(enrichedInput);
+        break;
+      }
+
+      default:
+        console.warn("[Plan] Unknown step:", step);
+        break;
+    }
+  }
+
+  if (!result || !result.answer) {
+    throw new Error("Plan did not produce an answer");
+  }
+
+  return result;
 }
 
 export async function ask(question: string): Promise<EvidaResponse> {

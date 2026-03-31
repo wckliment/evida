@@ -2,6 +2,7 @@ export type StepName = "ingest" | "generate" | "stream";
 
 export type Plan = {
   steps: string[];
+  input?: string;
 };
 
 export type StepRecord = {
