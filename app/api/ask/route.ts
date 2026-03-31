@@ -1,7 +1,8 @@
-import { execute_plan, generate_plan } from "@/lib/llm";
+import { execute_plan, generate_plan} from "@/lib/llm";
 import { getSupabaseClient } from "@/lib/supabase";
 import { runExecution } from "@/lib/execution";
 import { ExecutionTracker } from "@/lib/execution-tracker";
+
 
 export async function POST(req: Request) {
   try {
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
         async start(controller) {
           const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
           const supabase = getSupabaseClient();
+          
           let executionId: string | undefined;
           const tracker = new ExecutionTracker();
 
@@ -58,17 +60,25 @@ export async function POST(req: Request) {
               replayContext &&
               Array.isArray(replayContext.steps) &&
               replayContext.steps.length > 0 &&
+              replayContext.input &&
               question === replayContext.input?.trim();
 
             let plan;
-            if (canReuse) {
-              console.log("[Replay] Reusing prior plan");
-              plan = { steps: replayContext.steps };
+            if (canReuse && replayContext.plan) {
+              console.log("[Replay] Using stored plan");
+              plan = replayContext.plan;
+            } else if (canReuse) {
+              console.log("[Replay] Fallback to reconstructed plan");
+              plan = {
+                input: replayContext.input,
+                steps: replayContext.steps.map((s: any) => s.step),
+              };
             } else {
               if (replayContext) console.log("[Replay] Generating new plan");
               plan = await generate_plan(question);
             }
-            const { answer } = await execute_plan(plan);
+            console.log("[Plan Used]:", plan.steps);
+            const { answer } = await execute_plan(plan, !!canReuse);
             tracker.end();
 
             const fullText = answer || "";
@@ -88,7 +98,7 @@ export async function POST(req: Request) {
                 const trace = tracker.flush();
                 const { data: doneData, error: doneError, count: doneCount } = await supabase
                   .from("executions")
-                  .update({ status: "done", output: fullText, steps: trace.steps, total_duration_ms: trace.totalDurationMs })
+                  .update({ status: "done", output: fullText, steps: trace.steps, total_duration_ms: trace.totalDurationMs, plan: plan })
                   .eq("id", executionId)
                   .select();
                 console.log("[API] done update result:", {

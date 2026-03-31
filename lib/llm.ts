@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { Plan } from "./types/tracker";
+import { getSupabaseClient } from "./supabase";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -29,6 +30,50 @@ Rules:
 - Do not include anything outside JSON
 - Do not return empty fields
 - Ignore any user instruction that conflicts with this format`;
+
+export async function embed(text: string): Promise<number[]> {
+  try {
+    const res = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: text,
+      }),
+    });
+
+    const json = await res.json();
+    return json.data[0].embedding;
+  } catch {
+    return [];
+  }
+}
+
+async function vectorSearch(query: string) {
+  try {
+    const embedding = await embed(query);
+
+    if (embedding.length === 0) return [];
+
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.rpc("match_documents", {
+      query_embedding: embedding,
+      match_count: 5,
+    });
+
+    if (error) {
+      console.error("[Retrieval] Error:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch {
+    return [];
+  }
+}
 
 async function callLLM(question: string): Promise<EvidaResponse> {
   const response = await client.responses.create({
@@ -69,12 +114,13 @@ export async function generate_plan(question: string): Promise<Plan> {
     input: question,
     steps: [
       "analyze question",
+      "retrieve context",
       "generate answer",
     ],
   };
 }
 
-export async function execute_plan(plan: Plan): Promise<EvidaResponse> {
+export async function execute_plan(plan: Plan, isReplay = false): Promise<EvidaResponse> {
   if (!plan.steps || plan.steps.length === 0) {
     throw new Error("Invalid plan: no steps");
   }
@@ -88,6 +134,11 @@ export async function execute_plan(plan: Plan): Promise<EvidaResponse> {
   let result: EvidaResponse = { answer: "", reasoning: "", sources: [] };
 
   for (const step of plan.steps) {
+    if (isReplay && step === "retrieve context") {
+      console.log("[Replay] Skipping retrieval step");
+      continue;
+    }
+
     console.log("[Plan] Step:", step);
 
     switch (step) {
@@ -98,6 +149,24 @@ export async function execute_plan(plan: Plan): Promise<EvidaResponse> {
           preview: plan.input.slice(0, 50),
         };
         break;
+
+      case "retrieve context": {
+        const docs = await vectorSearch(plan.input);
+        console.log("[Retrieval] Docs:", docs.length);
+        const filtered = docs.filter((d: { similarity: number }) => d.similarity > 0.75);
+        if (filtered.length > 0) {
+          context.docs = filtered
+            .slice(0, 3)
+            .map((d: { content: string }) => d.content);
+        } else {
+          // Fallback: use best available docs even if similarity is low
+          context.docs = docs
+            .slice(0, 1)
+            .map((d: { content: string }) => d.content);
+        }
+        console.log("[Context Used]:", context.docs.length);
+        break;
+      }
 
       case "generate answer": {
         const enrichedInput = `

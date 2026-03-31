@@ -23,6 +23,36 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 500 });
     }
 
+    if (rating === "up") {
+      try {
+        const { data: execution } = await supabase
+          .from("executions")
+          .select("input, output")
+          .eq("id", id)
+          .single();
+
+        if (execution && execution.output) {
+          const content = `
+Question:
+${execution.input}
+
+Answer:
+${execution.output}
+`;
+
+          const { embed } = await import("@/lib/llm");
+          const embedding = await embed(content);
+
+          if (embedding && embedding.length > 0) {
+            await supabase.from("documents").insert({ content, embedding });
+            console.log("[Learning] Stored execution:", id);
+          }
+        }
+      } catch (err) {
+        console.error("[Learning] Failed:", err);
+      }
+    }
+
     return Response.json({ success: true });
   } catch (err) {
     return Response.json({ error: "Failed" }, { status: 500 });
