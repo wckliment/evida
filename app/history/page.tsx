@@ -29,6 +29,7 @@ export default function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [ratings, setRatings] = useState<Record<string, "up" | "down">>({});
+  const [committed, setCommitted] = useState<Record<string, boolean>>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -61,7 +62,12 @@ export default function HistoryPage() {
     <div className="flex flex-col px-8 py-8">
       <div className="max-w-4xl mx-auto w-full">
         {history.length === 0 ? (
-          <span className="text-sm text-zinc-600">No executions yet.</span>
+          <div className="text-sm text-zinc-600">
+            <div>No questions yet.</div>
+            <div className="mt-1 text-xs text-zinc-700">
+              Ask your first question to get started
+            </div>
+          </div>
         ) : (
           GROUP_ORDER.map((label) => {
             const items = grouped[label];
@@ -76,7 +82,7 @@ export default function HistoryPage() {
                     <div className="flex justify-between">
                       <span>{label}</span>
                       <span className="opacity-70">
-                        {items.filter((i) => i.status === "done").length} success • {items.filter((i) => i.status === "error").length} errors
+                        {items.filter((i) => i.status === "done").length} done • {items.filter((i) => i.status === "error").length} errors
                       </span>
                     </div>
                   </div>
@@ -85,7 +91,7 @@ export default function HistoryPage() {
                     <div className="flex items-center justify-between text-xs text-zinc-600 mb-4">
                       <span>{label}</span>
                       <span className="opacity-70">
-                        {items.filter((i) => i.status === "done").length} success • {items.filter((i) => i.status === "error").length} errors
+                        {items.filter((i) => i.status === "done").length} done • {items.filter((i) => i.status === "error").length} errors
                       </span>
                     </div>
                   </div>
@@ -116,12 +122,9 @@ export default function HistoryPage() {
                     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
                   );
 
-                  const renderItem = (item: any, isReplay = false, isBest = false) => {
+                  const renderItem = (item: any, isReplay = false) => {
                     const itemId = getItemId(item);
-
-                    console.log("ITEM", item);
-                    console.log("ITEM ID", itemId);
-                    console.log("RATING STATE", itemId ? ratings[itemId] : undefined);
+                    const isCommitted = !!(itemId && (ratings[itemId] === "up" || committed[itemId]));
 
                     return (
                     <div key={itemId}>
@@ -140,10 +143,17 @@ export default function HistoryPage() {
                             <span className={`text-sm truncate ${isReplay ? "text-zinc-400" : "text-zinc-100"}`}>
                               {item.input}
                             </span>
-                            <span className="text-xs text-zinc-500 opacity-60">
-                              {isReplay && <span className="text-cyan-700 mr-1">replay</span>}
-                              {new Date(item.created_at).toLocaleString()}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-zinc-500 opacity-60">
+                                {isReplay && <span className="text-cyan-700 mr-1">replay</span>}
+                                {new Date(item.created_at).toLocaleString()}
+                              </span>
+                              {isCommitted && (
+                                <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
+                                  Part of your system
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -156,44 +166,44 @@ export default function HistoryPage() {
                           >
                             {expandedId === itemId ? "Collapse ↑" : "Expand ↓"}
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col items-end gap-1">
                             <button
+                              title="Add this answer to your knowledge system. Future answers will be built using it."
                               onClick={() => {
                                 if (!itemId) return;
                                 setRatings((prev) => ({ ...prev, [itemId]: "up" }));
+                                setCommitted((prev) => ({ ...prev, [itemId]: true }));
                                 handleRate(itemId, "up");
+                                sessionStorage.setItem("recentlyCommitted", "true");
                               }}
-                              className={`text-xs px-2 py-1 rounded ${
-                                itemId && ratings[itemId] === "up"
-                                  ? "text-green-400 bg-zinc-800"
-                                  : "text-zinc-500 hover:text-green-400"
+                              className={`text-xs px-2 py-1 rounded flex items-center gap-1 transition-colors ${
+                                isCommitted
+                                  ? "text-cyan-400 bg-zinc-800"
+                                  : "text-zinc-500 hover:text-cyan-400 hover:bg-zinc-900"
                               }`}
                             >
-                              👍{itemId && ratings[itemId] === "up" && "✓"}
+                              {isCommitted ? (
+                                <>◈ Committed ✓</>
+                              ) : (
+                                <>◈ Commit</>
+                              )}
                             </button>
-                            <button
-                              onClick={() => {
-                                if (!itemId) return;
-                                setRatings((prev) => ({ ...prev, [itemId]: "down" }));
-                                handleRate(itemId, "down");
-                              }}
-                              className={`text-xs px-2 py-1 rounded ${
-                                itemId && ratings[itemId] === "down"
-                                  ? "text-red-400 bg-zinc-800"
-                                  : "text-zinc-500 hover:text-red-400"
-                              }`}
-                            >
-                              👎
-                            </button>
+                            {committed[itemId] && (
+                              <div className="leading-tight">
+                                <span className="text-xs text-zinc-600">
+                                  Committed — this will be used to build better answers
+                                </span>
+                                <div className="text-xs text-zinc-700 mt-1">
+                                  Ask a similar question to see how your system responds
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          {isBest && (
-                            <span className="text-xs text-yellow-400 ml-2">⭐ Best</span>
-                          )}
                           <button
-                            onClick={() => itemId && router.push(`/run?executionId=${itemId}`)}
+                            onClick={() => itemId && router.push(`/ask?executionId=${itemId}`)}
                             className="text-xs text-zinc-500 hover:text-zinc-300 transition"
                           >
-                            Open →
+                            Run again →
                           </button>
                         </div>
                       </div>
@@ -221,12 +231,11 @@ export default function HistoryPage() {
 
                   return rootItems.map((exec) => (
                     <div key={getItemId(exec)}>
-                      {renderItem(exec, false, !!(getItemId(exec) && ratings[getItemId(exec)] === "up"))}
+                      {renderItem(exec, false)}
                       {exec.children.length > 0 && (
                         <div className="ml-6 border-l border-zinc-700 pl-4">
                           {exec.children.map((child: any) => {
                             const childId = getItemId(child);
-                            const isBest = !!(childId && ratings[childId] === "up");
                             return (
                               <div
                                 key={childId}
@@ -234,7 +243,7 @@ export default function HistoryPage() {
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <span className="text-zinc-600 text-xs mt-3.5">↳</span>
-                                <div className="flex-1">{renderItem(child, true, isBest)}</div>
+                                <div className="flex-1">{renderItem(child, true)}</div>
                               </div>
                             );
                           })}

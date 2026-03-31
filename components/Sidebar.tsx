@@ -9,10 +9,10 @@ export default function Sidebar() {
       </div>
       <nav className="flex flex-col gap-2 pl-1">
         <Link
-          href="/run"
+          href="/ask"
           className="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
         >
-          Run
+          Ask
         </Link>
         <Link
           href="/history"
@@ -24,7 +24,7 @@ export default function Sidebar() {
           href="/results"
           className="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
         >
-          Results
+          Best Answers
         </Link>
       </nav>
     </aside>

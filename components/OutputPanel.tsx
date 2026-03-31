@@ -46,7 +46,7 @@ export default function OutputPanel({
           </div>
         ) : (
           <p className="text-base leading-7 text-zinc-200 whitespace-pre-wrap">
-            {streamedAnswer || <span className="text-zinc-600">Waiting for execution...</span>}
+            {streamedAnswer || undefined}
             {showCursor && <span className="opacity-50 animate-pulse">|</span>}
           </p>
         )}
