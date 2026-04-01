@@ -124,7 +124,7 @@ export default function HistoryPage() {
 
                   const renderItem = (item: any, isReplay = false) => {
                     const itemId = getItemId(item);
-                    const isCommitted = !!(itemId && (ratings[itemId] === "up" || committed[itemId]));
+                    const isCommitted = !!(itemId && (item.rating === "up" || ratings[itemId] === "up" || committed[itemId]));
 
                     return (
                     <div key={itemId}>

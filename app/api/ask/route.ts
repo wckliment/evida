@@ -49,6 +49,9 @@ export async function POST(req: Request) {
               throw new Error("Intentional test error");
             }
 
+            if (executionId) {
+              controller.enqueue(encoder.encode(`[EXEC_ID] ${executionId}\n`));
+            }
             controller.enqueue(encoder.encode("[STEP] ingest\n"));
             await delay(25);
             controller.enqueue(encoder.encode("[STEP] analyze\n"));

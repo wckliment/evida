@@ -1,9 +1,14 @@
 import Link from "next/link";
+import EvidaLogo from "@/components/EvidaLogo";
 
 export default function Page() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-8 py-16">
-      <div className="max-w-xl w-full text-center">
+      <div className="max-w-2xl w-full text-center">
+        <div className="flex flex-col items-start mb-10">
+          <EvidaLogo size={395} />
+          <p className="text-xs text-zinc-500 mt-1 ml-6">Build better answers</p>
+        </div>
         <div className="relative">
           <div className="absolute inset-0 bg-cyan-500/5 blur-3xl" />
           <div className="relative">
@@ -24,7 +29,7 @@ export default function Page() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 mb-10 text-left bg-zinc-900 rounded-lg px-6 py-5 border border-zinc-800">
+        <div className="flex flex-col gap-4 mt-6 mb-0 text-left bg-zinc-900 rounded-lg px-6 py-5 border border-zinc-800">
           <div className="flex items-start gap-4">
             <span className="text-xs text-zinc-600 font-mono pt-0.5 w-4 shrink-0">1</span>
             <div>
@@ -50,7 +55,7 @@ export default function Page() {
 
         <Link
           href="/ask"
-          className="inline-block px-6 py-3 bg-cyan-500 text-black text-sm font-semibold rounded hover:bg-cyan-400 transition-colors"
+          className="inline-block mt-8 px-6 py-3 bg-cyan-500 text-black text-sm font-semibold rounded hover:bg-cyan-400 transition-colors"
         >
           Start Asking
         </Link>

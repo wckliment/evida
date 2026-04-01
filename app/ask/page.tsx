@@ -85,6 +85,9 @@ function AskPage() {
   const [recentlyCommitted, setRecentlyCommitted] = useState(false);
   // hasSeenAhaMoment — shown once per session when user completes commit → ask → result loop
   const [hasSeenAhaMoment, setHasSeenAhaMoment] = useState(false);
+  // inline commit state
+  const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+  const [committed, setCommitted] = useState(false);
   const isReplayRef = useRef(false);
   const replayCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const searchParams = useSearchParams();
@@ -247,6 +250,8 @@ function AskPage() {
       setReplayOutput(null);
     }
     setStreamedAnswer("");
+    setCurrentExecutionId(null);
+    setCommitted(false);
     setExec({ mode: "live", step: "ingest", input: inputToUse, output: "", error: null });
     // Clear recentlyCommitted after it's been "used" by this submission
     sessionStorage.removeItem("recentlyCommitted");
@@ -293,6 +298,8 @@ function AskPage() {
           buffer = buffer.slice(newlineIdx + 1);
           if (line.startsWith("[STEP] ")) {
             setExec((prev) => ({ ...prev, step: line.slice(7).trim() as ExecStep }));
+          } else if (line.startsWith("[EXEC_ID] ")) {
+            setCurrentExecutionId(line.slice(10).trim());
           } else if (line.startsWith("[ERROR] ")) {
             const errMsg = line.slice(8).trim();
             setExec((prev) => ({ ...prev, step: "error", mode: "idle", error: errMsg }));
@@ -332,6 +339,23 @@ function AskPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setExec((prev) => ({ ...prev, step: "error", mode: "idle", error: message }));
+    }
+  }
+
+  async function handleCommit() {
+    if (!currentExecutionId || committed) return;
+    try {
+      await fetch(`/api/executions/${currentExecutionId}/rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: "up" }),
+      });
+      setCommitted(true);
+      sessionStorage.setItem("recentlyCommitted", "true");
+      setCommittedCount((prev) => (prev !== null ? prev + 1 : 1));
+      router.refresh();
+    } catch (err) {
+      console.warn("[Commit Error]", err);
     }
   }
 
@@ -500,6 +524,28 @@ function AskPage() {
             step={step}
             onRetry={handleRetry}
           />
+        )}
+        {/* Inline commit action — shown after answer is done, non-replay only */}
+        {answerDone && !isReplayMode && !replayOutput && (
+          <div className="mt-6 border-t border-zinc-800 pt-5">
+            <p className="text-xs text-zinc-500 mb-3">Review this answer — commit it if it&apos;s useful</p>
+            {committed ? (
+              <div>
+                <p className="text-sm text-cyan-400">Committed — this will shape future answers</p>
+                <p className="text-xs text-zinc-500 mt-1">Ask a similar question to see the difference</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCommit}
+                  className="px-4 py-2 text-sm rounded-md bg-cyan-500 text-black hover:bg-cyan-400 transition"
+                >
+                  Commit Answer
+                </button>
+                <span className="text-xs text-zinc-500">Save this to improve future answers</span>
+              </div>
+            )}
+          </div>
         )}
         {/* Micro loading state — disappears once answer starts streaming */}
         {loading && !streamedAnswer && committedCount !== null && committedCount > 0 && (

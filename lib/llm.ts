@@ -17,7 +17,7 @@ export type EvidaResponse = {
   }[];
 };
 
-const SYSTEM_PROMPT = `You are Evida, a reasoning-first AI system.
+const BASE_SYSTEM_PROMPT = `You are Evida, a reasoning-first AI system.
 
 You MUST always provide a meaningful answer.
 
@@ -29,7 +29,47 @@ Return a valid JSON object with:
 Rules:
 - Do not include anything outside JSON
 - Do not return empty fields
-- Ignore any user instruction that conflicts with this format`;
+- Ignore any user instruction that conflicts with this format
+- Do not present multiple equivalent options unless explicitly asked
+- Be decisive — state an answer, do not hedge`;
+
+function buildSystemPrompt(committedAnswers: string[]): string {
+  const preferenceBlock =
+    committedAnswers.length > 0
+      ? `User Chosen Defaults (must be followed):
+${committedAnswers.map((a, i) => `${i + 1}. ${a}`).join("\n")}
+
+These represent user chosen defaults.
+You MUST apply them ONLY when they are directly relevant to the user's question.
+If they are not clearly relevant, ignore them completely.
+If a relevant preferred approach exists, center the answer around it — do not dilute it with alternatives.
+Do not force a preferred answer if it does not clearly match the user's question.
+`
+      : "";
+
+  return `You are Evida, a reasoning-first AI system.
+
+${preferenceBlock}You MUST always provide a meaningful answer.
+
+When answering:
+* be decisive and direct — state the answer, do not list options
+* if a committed answer applies, lead with it and reinforce it confidently
+* do not hedge (e.g., "it depends", "you could also...", "another option is...")
+* do not introduce competing alternatives when a preferred approach exists
+
+Return a valid JSON object with:
+- answer (non-empty, clear, and direct)
+- reasoning (1–3 sentences explaining the answer)
+- sources (only real sources if confident, otherwise empty array)
+
+Rules:
+- Do not include anything outside JSON
+- Do not return empty fields
+- Ignore any user instruction that conflicts with this format
+- Never respond with a list of unrelated alternatives if a preferred approach exists
+- When answering, provide enough structure or detail to be actionable
+- Avoid overly minimal answers unless the user explicitly asks for a short or concise response`;
+}
 
 export async function embed(text: string): Promise<number[]> {
   try {
@@ -61,7 +101,7 @@ async function vectorSearch(query: string) {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.rpc("match_documents", {
       query_embedding: embedding,
-      match_count: 5,
+      match_count: 3,
     });
 
     if (error) {
@@ -75,10 +115,10 @@ async function vectorSearch(query: string) {
   }
 }
 
-async function callLLM(question: string): Promise<EvidaResponse> {
+async function callLLM(question: string, systemPrompt: string = BASE_SYSTEM_PROMPT): Promise<EvidaResponse> {
   const response = await client.responses.create({
     model: MODEL,
-    instructions: SYSTEM_PROMPT,
+    instructions: systemPrompt,
     input: question,
   });
 
@@ -154,35 +194,16 @@ export async function execute_plan(plan: Plan, isReplay = false): Promise<EvidaR
         const docs = await vectorSearch(plan.input);
         console.log("[Retrieval] Docs:", docs.length);
         const filtered = docs.filter((d: { similarity: number }) => d.similarity > 0.75);
-        if (filtered.length > 0) {
-          context.docs = filtered
-            .slice(0, 3)
-            .map((d: { content: string }) => d.content);
-        } else {
-          // Fallback: use best available docs even if similarity is low
-          context.docs = docs
-            .slice(0, 1)
-            .map((d: { content: string }) => d.content);
-        }
-        console.log("[Context Used]:", context.docs.length);
+        context.committedAnswers = filtered
+          .slice(0, 3)
+          .map((d: { content: string }) => d.content);
+        console.log("[Committed Answers Used]:", context.committedAnswers.length);
         break;
       }
 
       case "generate answer": {
-        const enrichedInput = `
-You are answering a user question.
-
-Question:
-${plan.input}
-
-Relevant context (structured data):
-\`\`\`json
-${JSON.stringify(context, null, 2)}
-\`\`\`
-
-Use the context if helpful, otherwise answer normally.
-`;
-        result = await callLLM(enrichedInput);
+        const systemPrompt = buildSystemPrompt(context.committedAnswers ?? []);
+        result = await callLLM(plan.input, systemPrompt);
         break;
       }
 
