@@ -84,6 +84,9 @@ export async function POST(req: Request) {
             const { answer } = await execute_plan(plan, !!canReuse);
             tracker.end();
 
+            console.log("[API] answer length:", answer?.length);
+            console.log("[API] answer preview:", answer?.slice(0, 80));
+
             const fullText = answer || "";
             const tokens = fullText.match(/\S+\s*/g) || [];
 
@@ -97,11 +100,11 @@ export async function POST(req: Request) {
             // FIRST: persist to DB
             if (executionId) {
               try {
-                console.log("[API] writing done to DB:", executionId);
+                console.log("[API] writing done to DB:", executionId, "output length:", fullText.length);
                 const trace = tracker.flush();
                 const { data: doneData, error: doneError, count: doneCount } = await supabase
                   .from("executions")
-                  .update({ status: "done", output: fullText, steps: trace.steps, total_duration_ms: trace.totalDurationMs, plan: plan })
+                  .update({ status: "done", output: fullText, steps: trace.steps, total_duration_ms: trace.totalDurationMs })
                   .eq("id", executionId)
                   .select();
                 console.log("[API] done update result:", {

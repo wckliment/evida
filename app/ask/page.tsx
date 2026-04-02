@@ -25,6 +25,17 @@ function SystemAwarenessLine({ count }: { count: number | null }) {
   );
 }
 
+function AnswerSkeleton() {
+  return (
+    <div className="border-l-2 border-neutral-700 pl-4 space-y-3 animate-pulse">
+      <div className="h-4 bg-neutral-800 rounded w-3/4" />
+      <div className="h-4 bg-neutral-800 rounded w-full" />
+      <div className="h-4 bg-neutral-800 rounded w-5/6" />
+      <div className="h-4 bg-neutral-800 rounded w-2/3" />
+    </div>
+  );
+}
+
 const EXAMPLE_PROMPTS = [
   "How do I build a SaaS MVP?",
   "Explain OAuth in simple terms",
@@ -88,6 +99,7 @@ function AskPage() {
   // inline commit state
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
   const [committed, setCommitted] = useState(false);
+  const [commitLoading, setCommitLoading] = useState(false);
   const isReplayRef = useRef(false);
   const replayCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const searchParams = useSearchParams();
@@ -343,7 +355,8 @@ function AskPage() {
   }
 
   async function handleCommit() {
-    if (!currentExecutionId || committed) return;
+    if (!currentExecutionId || committed || commitLoading) return;
+    setCommitLoading(true);
     try {
       await fetch(`/api/executions/${currentExecutionId}/rate`, {
         method: "POST",
@@ -356,6 +369,8 @@ function AskPage() {
       router.refresh();
     } catch (err) {
       console.warn("[Commit Error]", err);
+    } finally {
+      setCommitLoading(false);
     }
   }
 
@@ -379,198 +394,191 @@ function AskPage() {
   }, [answerDone, recentlyCommitted, hasSeenAhaMoment]);
 
   return (
-    <div className="flex-1 flex flex-col px-8">
-      <div className="max-w-4xl mx-auto w-full flex flex-col flex-1">
-        <div className="pt-8 pb-4">
-          <h1 className="text-xl font-semibold text-zinc-100">Ask anything</h1>
-          {/* System awareness line — wire committedCount to real data when available */}
-          <SystemAwarenessLine count={committedCount} />
-        </div>
-        <InputBar
-          question={question}
-          onQuestionChange={setQuestion}
-          onSubmit={handleSubmit}
-          loading={loading}
-        />
-        {/* Guidance line + example prompts — hidden once a question has been submitted */}
-        {exec.step === "idle" && (
-          <div className="mt-5 mb-4 space-y-4">
-            <p className="text-xs text-zinc-500">
-              Ask a question, then commit the best answer
-            </p>
-            <div>
-              <p className="text-xs text-zinc-600 mb-3">Try asking:</p>
-              <div className="flex flex-wrap gap-2">
-                {EXAMPLE_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => setQuestion(prompt)}
-                    className="inline-block px-3 py-1.5 rounded-full bg-zinc-800/70 hover:bg-zinc-700 text-zinc-300 hover:text-white cursor-pointer transition text-sm"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="text-xs text-zinc-500">Try one — then commit what matters</p>
+    <div className="flex-1 flex flex-col px-8 pb-12">
+      <div className="max-w-4xl mx-auto w-full flex flex-col flex-1 space-y-5">
+
+        {/* Question Input Section */}
+        <div>
+          <div className="pt-8 pb-2">
+            <h1 className="text-xl font-semibold text-zinc-100">Ask anything</h1>
+            <SystemAwarenessLine count={committedCount} />
           </div>
-        )}
-        {originalOutput && !loading && (
-          <div className="flex justify-end mt-1">
-            <button
-              className="text-xs text-zinc-400 hover:text-zinc-200 transition"
-              onClick={() => {
-                isReplayRef.current = true;
-                setIsReplayMode(true);
-                setReplayOutput(null);
-                handleSubmit(null, question);
-              }}
-            >
-              Replay Modified
-            </button>
-          </div>
-        )}
-        {/* Pre-answer expectation hint — shown while generating when committed answers exist */}
-        {loading && committedCount !== null && committedCount > 0 && (
-          <p className="text-xs text-zinc-600 mb-2">
-            Your system may respond differently based on your committed answers
-          </p>
-        )}
-        {/* Just-committed reinforcement — shown only for the run immediately after a commit */}
-        {(loading || answerDone) && recentlyCommitted && (
-          <p className="text-xs text-zinc-500 mb-2">
-            This answer is influenced by what you just committed
-          </p>
-        )}
-        {originalOutput && (isReplayMode || replayOutput) ? (
-          <div className="space-y-6 mt-4">
-            <div>
-              <div className="text-xs text-zinc-500 mb-2">Original Output</div>
-              <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{originalOutput}</div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs text-zinc-500">
-                  {loading ? "Replay Output (Streaming)" : "Replay Output"}
-                </div>
-                {replayOutput && (
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-xs text-zinc-400">
-                      <input
-                        type="checkbox"
-                        checked={showOnlyChanges}
-                        onChange={(e) => setShowOnlyChanges(e.target.checked)}
-                      />
-                      Show only changes
-                    </label>
-                    <button
-                      className="text-xs text-zinc-400 hover:text-zinc-200"
-                      onClick={() => { setReplayOutput(null); setIsReplayMode(false); }}
-                    >
-                      Clear Replay
-                    </button>
-                  </div>
-                )}
-              </div>
-              {!replayOutput ? (
-                <OutputPanel
-                  streamedAnswer={streamedAnswer}
-                  loading={loading}
-                  error={exec.error}
-                  execInput={exec.input}
-                  execMode={exec.mode}
-                  question={question}
-                  step={step}
-                  onRetry={handleRetry}
-                />
-              ) : (
-                diff && (
-                  <div className="text-sm text-zinc-300 leading-relaxed font-mono">
-                    {(showOnlyChanges ? diff.filter(l => l.changed) : diff).map((line, i) => (
-                      <div
-                        key={i}
-                        className={line.changed ? "bg-yellow-500/10 border-l-2 border-yellow-500 pl-2" : "pl-2"}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+            <InputBar
+              question={question}
+              onQuestionChange={setQuestion}
+              onSubmit={handleSubmit}
+              loading={loading}
+            />
+            {exec.step === "idle" && (
+              <div className="px-1 pb-1 space-y-3">
+                <p className="text-xs text-zinc-500">Ask a question, then commit the best answer</p>
+                <div>
+                  <p className="text-xs text-zinc-600 mb-2">Try asking:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {EXAMPLE_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        onClick={() => setQuestion(prompt)}
+                        className="inline-block px-3 py-1.5 rounded-full bg-zinc-800/70 hover:bg-zinc-700 text-zinc-300 hover:text-white cursor-pointer transition text-sm"
                       >
-                        {line.changed && <span className="text-yellow-500 mr-2">•</span>}
-                        {line.changed ? (() => {
-                          const words = diffWords(line.original, line.replay);
-                          return (
-                            <span>
-                              {words.map((w, idx) => (
-                                <span key={idx} className={w.changed ? "bg-yellow-500/30 px-0.5" : ""}>
-                                  {idx < words.length - 1 ? w.word + " " : w.word}
-                                </span>
-                              ))}
-                            </span>
-                          );
-                        })() : (
-                          line.replay || "\u00a0"
-                        )}
-                      </div>
+                        {prompt}
+                      </button>
                     ))}
                   </div>
-                )
-              )}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          <OutputPanel
-            streamedAnswer={streamedAnswer}
-            loading={loading}
-            error={exec.error}
-            execInput={exec.input}
-            execMode={exec.mode}
-            question={question}
-            step={step}
-            onRetry={handleRetry}
-          />
-        )}
-        {/* Inline commit action — shown after answer is done, non-replay only */}
-        {answerDone && !isReplayMode && !replayOutput && (
-          <div className="mt-6 border-t border-zinc-800 pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Review this answer — commit it if it&apos;s useful</p>
-            {committed ? (
-              <div>
-                <p className="text-sm text-cyan-400">Committed — this will shape future answers</p>
-                <p className="text-xs text-zinc-500 mt-1">Ask a similar question to see the difference</p>
+        </div>
+
+        {/* Answer Display Section */}
+        {exec.step !== "idle" && (
+          <div className={`rounded-xl border bg-neutral-900/50 p-6 ${(recentlyCommitted || (committedCount !== null && committedCount > 0)) ? "border-neutral-600" : "border-neutral-800"}`}>
+            {originalOutput && (isReplayMode || replayOutput) ? (
+              <div className="space-y-6">
+                <div>
+                  <div className="text-xs text-neutral-500 mb-3">Original Output</div>
+                  <div className="border-l-2 border-neutral-700 pl-4 space-y-4">
+                    <p className="text-base leading-relaxed text-zinc-300 whitespace-pre-wrap">{originalOutput}</p>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs text-zinc-500">
+                      {loading ? "Replay Output (Streaming)" : "Replay Output"}
+                    </div>
+                    {replayOutput && (
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={showOnlyChanges}
+                            onChange={(e) => setShowOnlyChanges(e.target.checked)}
+                          />
+                          Show only changes
+                        </label>
+                        <button
+                          className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                          onClick={() => { setReplayOutput(null); setIsReplayMode(false); }}
+                        >
+                          Clear Replay
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {!replayOutput ? (
+                    loading && !streamedAnswer ? (
+                      <AnswerSkeleton />
+                    ) : (
+                      <OutputPanel
+                        streamedAnswer={streamedAnswer}
+                        loading={loading}
+                        error={exec.error}
+                        execInput={exec.input}
+                        execMode={exec.mode}
+                        question={question}
+                        step={step}
+                        onRetry={handleRetry}
+                      />
+                    )
+                  ) : (
+                    diff && (
+                      <div className="border-l-2 border-neutral-700 pl-4 text-sm text-zinc-300 leading-relaxed font-mono">
+                        {(showOnlyChanges ? diff.filter(l => l.changed) : diff).map((line, i) => (
+                          <div
+                            key={i}
+                            className={line.changed ? "bg-yellow-500/10 border-l-2 border-yellow-500 pl-2 -ml-4" : ""}
+                          >
+                            {line.changed && <span className="text-yellow-500 mr-2">•</span>}
+                            {line.changed ? (() => {
+                              const words = diffWords(line.original, line.replay);
+                              return (
+                                <span>
+                                  {words.map((w, idx) => (
+                                    <span key={idx} className={w.changed ? "bg-yellow-500/30 px-0.5" : ""}>
+                                      {idx < words.length - 1 ? w.word + " " : w.word}
+                                    </span>
+                                  ))}
+                                </span>
+                              );
+                            })() : (
+                              line.replay || "\u00a0"
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
+              <div className="space-y-4">
+                {recentlyCommitted ? (
+                  <p className="text-xs text-neutral-500 mb-2">This answer reflects what you just committed</p>
+                ) : committedCount !== null && committedCount > 0 ? (
+                  <p className="text-xs text-neutral-500 mb-2">Influenced by your committed answers</p>
+                ) : null}
+                <p className="text-xs text-neutral-500">System Response</p>
+                {loading && !streamedAnswer ? (
+                  <AnswerSkeleton />
+                ) : (
+                  <OutputPanel
+                    streamedAnswer={streamedAnswer}
+                    loading={loading}
+                    error={exec.error}
+                    execInput={exec.input}
+                    execMode={exec.mode}
+                    question={question}
+                    step={step}
+                    onRetry={handleRetry}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Replay Modified — shown after first answer completes */}
+            {originalOutput && !loading && !isReplayMode && (
+              <div className="flex justify-end mt-4 pt-3 border-t border-neutral-800">
                 <button
-                  onClick={handleCommit}
-                  className="px-4 py-2 text-sm rounded-md bg-cyan-500 text-black hover:bg-cyan-400 transition"
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  onClick={() => {
+                    isReplayRef.current = true;
+                    setIsReplayMode(true);
+                    setReplayOutput(null);
+                    handleSubmit(null, question);
+                  }}
                 >
-                  Commit Answer
+                  Replay Modified
                 </button>
-                <span className="text-xs text-zinc-500">Save this to improve future answers</span>
               </div>
             )}
           </div>
         )}
-        {/* Micro loading state — disappears once answer starts streaming */}
-        {loading && !streamedAnswer && committedCount !== null && committedCount > 0 && (
-          <p className="text-xs text-zinc-500 mb-2">
-            Applying your committed answers...
-          </p>
-        )}
-        {/* Learning signal — wrapped in system metadata container */}
-        {answerDone && (
-          <div className="bg-zinc-900/40 rounded px-2 py-1 mt-2 text-xs text-zinc-600">
-            • This answer is shaped by your committed answers
+
+        {/* Commit Section */}
+        {answerDone && !isReplayMode && !replayOutput && (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-6 pt-5 pb-6">
+            {committed ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-emerald-400">Committed ✓</p>
+                <p className="text-xs text-zinc-500">This answer will shape future responses. Ask a similar question to see the difference.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-neutral-500">Use this answer to improve future responses</p>
+                <button
+                  onClick={handleCommit}
+                  disabled={commitLoading || committed}
+                  className="px-5 py-2 text-sm font-medium rounded-lg bg-white text-black hover:bg-neutral-100 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {commitLoading ? "Committing..." : "Commit Answer"}
+                </button>
+              </div>
+            )}
           </div>
         )}
-        {/* Post-answer causality confirmation */}
-        {answerDone && committedCount !== null && committedCount > 0 && (
-          <p className="text-xs text-zinc-600 mt-2">
-            Your committed answers influenced this result
-          </p>
-        )}
-        {/* First-time aha moment — shown once per session after completing commit → ask → result */}
-        {answerDone && recentlyCommitted && !hasSeenAhaMoment && (
-          <p className="text-xs text-zinc-500 mt-2">
-            You&apos;re now seeing the effect of your committed answers
-          </p>
-        )}
+
         <ExecutionTrace step={step} loading={loading} />
       </div>
     </div>

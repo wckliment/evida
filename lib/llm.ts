@@ -217,6 +217,9 @@ export async function execute_plan(plan: Plan, isReplay = false): Promise<EvidaR
     throw new Error("Plan did not produce an answer");
   }
 
+  console.log("[execute_plan] answer length:", result.answer.length);
+  console.log("[execute_plan] answer preview:", result.answer.slice(0, 80));
+
   return result;
 }
 
