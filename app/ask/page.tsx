@@ -6,9 +6,14 @@ import InputBar from "../../components/InputBar";
 import OutputPanel from "../../components/OutputPanel";
 import ExecutionTrace from "../../components/ExecutionTrace";
 import { ExecutionTimeline } from "@/components/ExecutionTimeline";
+import { getHighlightedDiff } from "@/lib/diff";
 
 type ExecStep = "idle" | "ingest" | "analyze" | "generate" | "done" | "error";
 type ExecMode = "idle" | "live" | "replay";
+type InfluencedSource = {
+  id: string;
+  input: string;
+};
 
 // System awareness line — receives count from parent, wire committedCount fetch to real endpoint when available
 function SystemAwarenessLine({ count }: { count: number | null }) {
@@ -98,6 +103,8 @@ function AskPage() {
   const [hasSeenAhaMoment, setHasSeenAhaMoment] = useState(false);
   // inline commit state
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+  const [previousAnswer, setPreviousAnswer] = useState<string | null>(null);
+  const [sources, setSources] = useState<InfluencedSource[]>([]);
   const [committed, setCommitted] = useState(false);
   const [commitLoading, setCommitLoading] = useState(false);
   const isReplayRef = useRef(false);
@@ -263,6 +270,8 @@ function AskPage() {
     }
     setStreamedAnswer("");
     setCurrentExecutionId(null);
+    setPreviousAnswer(null);
+    setSources([]);
     setCommitted(false);
     setExec({ mode: "live", step: "ingest", input: inputToUse, output: "", error: null });
     // Clear recentlyCommitted after it's been "used" by this submission
@@ -312,6 +321,14 @@ function AskPage() {
             setExec((prev) => ({ ...prev, step: line.slice(7).trim() as ExecStep }));
           } else if (line.startsWith("[EXEC_ID] ")) {
             setCurrentExecutionId(line.slice(10).trim());
+          } else if (line.startsWith("[PREV_ANSWER] ")) {
+            try {
+              setPreviousAnswer(JSON.parse(line.slice(14).trim()));
+            } catch {}
+          } else if (line.startsWith("[SOURCES] ")) {
+            try {
+              setSources(JSON.parse(line.slice(10).trim()));
+            } catch {}
           } else if (line.startsWith("[ERROR] ")) {
             const errMsg = line.slice(8).trim();
             setExec((prev) => ({ ...prev, step: "error", mode: "idle", error: errMsg }));
@@ -522,7 +539,7 @@ function AskPage() {
                 <p className="text-xs text-neutral-500">System Response</p>
                 {loading && !streamedAnswer ? (
                   <AnswerSkeleton />
-                ) : (
+                ) : exec.step === "error" ? (
                   <OutputPanel
                     streamedAnswer={streamedAnswer}
                     loading={loading}
@@ -533,6 +550,47 @@ function AskPage() {
                     step={step}
                     onRetry={handleRetry}
                   />
+                ) : (
+                  <div className="border-l-2 border-neutral-700 pl-4">
+                    <div
+                      className="text-base leading-relaxed text-zinc-200 whitespace-pre-wrap"
+                      dangerouslySetInnerHTML={{
+                        __html: previousAnswer
+                          ? getHighlightedDiff(previousAnswer, streamedAnswer)
+                          : streamedAnswer,
+                      }}
+                    />
+                    {step !== "done" &&
+                      (exec.mode === "live" || (exec.mode === "replay" && step === "generate")) && (
+                        <span className="opacity-50 animate-pulse text-zinc-200">|</span>
+                      )}
+                    {sources && sources.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <p className="text-xs text-neutral-500">
+                          Influenced by your committed answers
+                        </p>
+
+                        <div className="flex flex-wrap gap-2">
+                          {sources.map((source) => (
+                            <span
+                              key={source.id}
+                              className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded-md border border-neutral-700"
+                            >
+                              {source.input}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {previousAnswer && !loading && (
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-4 mt-4">
+                    <p className="text-xs text-neutral-500 mb-2">Previous answer</p>
+                    <p className="text-sm text-neutral-400 leading-relaxed whitespace-pre-wrap">
+                      {previousAnswer}
+                    </p>
+                  </div>
                 )}
               </div>
             )}

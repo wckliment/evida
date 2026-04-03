@@ -8,13 +8,19 @@ const client = new OpenAI({
 
 export const MODEL = "gpt-4o-mini";
 
+export type InfluencedSource = {
+  id: string;
+  input: string;
+};
+
 export type EvidaResponse = {
   answer: string;
   reasoning: string;
-  sources: {
+  citations: {
     title: string;
     url: string;
   }[];
+  sources: InfluencedSource[];
 };
 
 const BASE_SYSTEM_PROMPT = `You are Evida, a reasoning-first AI system.
@@ -137,16 +143,22 @@ async function callLLM(question: string, systemPrompt: string = BASE_SYSTEM_PROM
     return {
       answer: parsed.answer ?? raw,
       reasoning: parsed.reasoning ?? "",
-      sources: Array.isArray(parsed.sources)
+      citations: Array.isArray(parsed.sources)
         ? parsed.sources.filter((s: unknown) => {
             const src = s as Record<string, unknown>;
             return src?.title && src?.url;
           })
         : [],
+      sources: [],
     };
   } catch {
-    return { answer: raw, reasoning: "Unstructured response", sources: [] };
+    return { answer: raw, reasoning: "Unstructured response", citations: [], sources: [] };
   }
+}
+
+function extractCommittedInput(content: string): string {
+  const match = content.match(/Question:\s*([\s\S]*?)\n\s*Answer:/);
+  return (match?.[1] ?? content).trim();
 }
 
 export async function generate_plan(question: string): Promise<Plan> {
@@ -171,7 +183,7 @@ export async function execute_plan(plan: Plan, isReplay = false): Promise<EvidaR
 
   const context: Record<string, any> = {};
 
-  let result: EvidaResponse = { answer: "", reasoning: "", sources: [] };
+  let result: EvidaResponse = { answer: "", reasoning: "", citations: [], sources: [] };
 
   for (const step of plan.steps) {
     if (isReplay && step === "retrieve context") {
@@ -197,6 +209,10 @@ export async function execute_plan(plan: Plan, isReplay = false): Promise<EvidaR
         context.committedAnswers = filtered
           .slice(0, 3)
           .map((d: { content: string }) => d.content);
+        context.sources = filtered.slice(0, 3).map((d: { id: string; content: string }) => ({
+          id: d.id,
+          input: extractCommittedInput(d.content),
+        }));
         console.log("[Committed Answers Used]:", context.committedAnswers.length);
         break;
       }
@@ -204,6 +220,7 @@ export async function execute_plan(plan: Plan, isReplay = false): Promise<EvidaR
       case "generate answer": {
         const systemPrompt = buildSystemPrompt(context.committedAnswers ?? []);
         result = await callLLM(plan.input, systemPrompt);
+        result.sources = context.sources ?? [];
         break;
       }
 

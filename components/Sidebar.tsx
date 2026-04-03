@@ -7,7 +7,7 @@ import { MessageSquare, History, Bookmark } from "lucide-react";
 const navItems = [
   { href: "/ask", label: "Ask", Icon: MessageSquare },
   { href: "/history", label: "History", Icon: History },
-  { href: "/results", label: "Best Answers", Icon: Bookmark },
+  { href: "/best-answers", label: "Best Answers", Icon: Bookmark },
 ];
 
 export default function Sidebar() {

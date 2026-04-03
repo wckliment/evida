@@ -56,6 +56,26 @@ export async function POST(req: Request) {
             await delay(25);
             controller.enqueue(encoder.encode("[STEP] analyze\n"));
 
+            // Fetch previous answer for the same question (excluding current execution)
+            try {
+              const { data: prevData } = await supabase
+                .from("executions")
+                .select("output")
+                .eq("input", question)
+                .eq("status", "done")
+                .not("output", "is", null)
+                .neq("id", executionId ?? "")
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .single();
+              const prevAnswer = prevData?.output ?? null;
+              if (prevAnswer) {
+                controller.enqueue(encoder.encode(`[PREV_ANSWER] ${JSON.stringify(prevAnswer)}\n`));
+              }
+            } catch {
+              // no previous answer found — continue silently
+            }
+
             controller.enqueue(encoder.encode("[STEP] generate\n"));
 
             tracker.step("generate");
@@ -81,11 +101,15 @@ export async function POST(req: Request) {
               plan = await generate_plan(question);
             }
             console.log("[Plan Used]:", plan.steps);
-            const { answer } = await execute_plan(plan, !!canReuse);
+            const { answer, sources } = await execute_plan(plan, !!canReuse);
             tracker.end();
 
             console.log("[API] answer length:", answer?.length);
             console.log("[API] answer preview:", answer?.slice(0, 80));
+
+            if (sources.length > 0) {
+              controller.enqueue(encoder.encode(`[SOURCES] ${JSON.stringify(sources)}\n`));
+            }
 
             const fullText = answer || "";
             const tokens = fullText.match(/\S+\s*/g) || [];
