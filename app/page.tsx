@@ -1,13 +1,19 @@
 import Link from "next/link";
-import EvidaLogo from "@/components/EvidaLogo";
+import Image from "next/image";
 
 export default function Page() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-8 py-16">
       <div className="max-w-2xl w-full text-center">
-        <div className="flex flex-col items-start mb-10">
-          <EvidaLogo size={395} />
-          <p className="text-xs text-zinc-500 mt-1 ml-6">Build better answers</p>
+        <div className="flex flex-col items-center mb-10">
+          <Image
+            src="/orbit-core.png"
+            alt="Evida"
+            width={320}
+            height={320}
+            priority
+            className="drop-shadow-[0_0_32px_rgba(0,229,255,0.25)]"
+          />
         </div>
         <div className="relative">
           <div className="absolute inset-0 bg-cyan-500/5 blur-3xl" />
@@ -55,7 +61,7 @@ export default function Page() {
 
         <Link
           href="/ask"
-          className="inline-block mt-8 px-6 py-3 bg-cyan-500 text-black text-sm font-semibold rounded hover:bg-cyan-400 transition-colors"
+          className="inline-block mt-8 px-6 py-3 bg-cyan-500 text-black text-sm font-semibold rounded hover:bg-cyan-400 transition-colors shadow-[0_0_16px_rgba(0,229,255,0.35)] hover:shadow-[0_0_24px_rgba(0,229,255,0.5)]"
         >
           Start Asking
         </Link>
